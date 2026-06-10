@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+
+aegis.db
+entrada.txt
+reports/*.html
+reports/*.csv
+reports/*.txt
+
+.vscode/
+.idea/
+
+.env
