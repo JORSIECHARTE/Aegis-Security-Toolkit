@@ -5,6 +5,8 @@ import io
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from services.service_risk import get_service_risk
+
 
 COMMON_SERVICES = {
     20: "FTP Data",
@@ -42,7 +44,7 @@ def obtener_servicio(puerto):
     try:
         return socket.getservbyport(puerto, "tcp").upper()
     except Exception:
-        return "Desconocido"
+        return "Unknown"
 
 
 def obtener_banner(ip, puerto, timeout=1):
@@ -53,18 +55,18 @@ def obtener_banner(ip, puerto, timeout=1):
             if puerto in [80, 8080, 8000, 8501]:
                 s.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
             elif puerto in [443, 8443]:
-                return "TLS/HTTPS detectado. Banner no leído sin handshake TLS."
+                return "TLS/HTTPS detected. Banner not read without TLS handshake."
             else:
                 s.sendall(b"\r\n")
 
             try:
                 banner = s.recv(1024).decode(errors="ignore").strip()
-                return banner if banner else "Sin banner visible"
+                return banner if banner else "No visible banner"
             except socket.timeout:
-                return "Sin respuesta de banner"
+                return "No banner response"
 
     except Exception:
-        return "No disponible"
+        return "Not available"
 
 
 def escanear_puerto(ip, puerto, timeout=0.3, banner=False):
@@ -77,12 +79,18 @@ def escanear_puerto(ip, puerto, timeout=0.3, banner=False):
             tiempo_respuesta = round((time.perf_counter() - inicio) * 1000, 4)
 
             if resultado == 0:
+                servicio = obtener_servicio(puerto)
+                risk_info = get_service_risk(servicio)
+
                 return {
                     "puerto": puerto,
-                    "estado": "Abierto",
-                    "servicio": obtener_servicio(puerto),
+                    "estado": "Open",
+                    "servicio": servicio,
+                    "risk": risk_info["risk"],
+                    "risk_score": risk_info["score"],
+                    "recommendation": risk_info["recommendation"],
                     "tiempo_ms": tiempo_respuesta,
-                    "banner": obtener_banner(ip, puerto) if banner else "No solicitado"
+                    "banner": obtener_banner(ip, puerto) if banner else "Disabled"
                 }
 
     except Exception:
@@ -127,24 +135,27 @@ def escanear_rango(ip, puerto_inicio, puerto_fin, timeout=0.3, banner=False, wor
 
 def generar_reporte_txt(resultado_scan):
     reporte = f"""
-AEGIS SECURITY TOOLKIT - REPORTE DE ESCANEO
+AEGIS SECURITY TOOLKIT - SCAN REPORT
 
-Objetivo: {resultado_scan['ip']}
-Fecha: {resultado_scan['fecha']}
-Rango: {resultado_scan['puerto_inicio']} - {resultado_scan['puerto_fin']}
-Puertos analizados: {resultado_scan['puertos_analizados']}
-Duración: {resultado_scan['duracion_segundos']} segundos
-Puertos abiertos: {resultado_scan['puertos_abiertos']}
+Target: {resultado_scan['ip']}
+Date: {resultado_scan['fecha']}
+Range: {resultado_scan['puerto_inicio']} - {resultado_scan['puerto_fin']}
+Ports analyzed: {resultado_scan['puertos_analizados']}
+Duration: {resultado_scan['duracion_segundos']} seconds
+Open ports: {resultado_scan['puertos_abiertos']}
 
-RESULTADOS:
+RESULTS:
 """
 
     for item in resultado_scan["resultados"]:
         reporte += (
-            f"\nPuerto: {item['puerto']}"
-            f"\nEstado: {item['estado']}"
-            f"\nServicio: {item['servicio']}"
-            f"\nTiempo: {item['tiempo_ms']} ms"
+            f"\nPort: {item['puerto']}"
+            f"\nStatus: {item['estado']}"
+            f"\nService: {item['servicio']}"
+            f"\nRisk: {item.get('risk', 'Informational')}"
+            f"\nRisk Score: {item.get('risk_score', 0)}"
+            f"\nRecommendation: {item.get('recommendation', '')}"
+            f"\nTime: {item['tiempo_ms']} ms"
             f"\nBanner: {item['banner']}"
             f"\n-----------------------------\n"
         )
@@ -155,7 +166,17 @@ RESULTADOS:
 def generar_reporte_csv(resultado_scan):
     salida = io.StringIO()
 
-    campos = ["puerto", "estado", "servicio", "tiempo_ms", "banner"]
+    campos = [
+        "puerto",
+        "estado",
+        "servicio",
+        "risk",
+        "risk_score",
+        "recommendation",
+        "tiempo_ms",
+        "banner"
+    ]
+
     writer = csv.DictWriter(salida, fieldnames=campos)
 
     writer.writeheader()

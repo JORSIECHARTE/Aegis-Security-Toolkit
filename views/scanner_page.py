@@ -1,5 +1,12 @@
 import streamlit as st
 
+from services.risk_summary import (
+    calculate_overall_risk,
+    generate_executive_summary
+)
+
+from services.vulnerability_rules import analyze_service_vulnerabilities
+
 from modules.scanner import (
     escanear_rango,
     generar_reporte_txt,
@@ -82,6 +89,45 @@ def mostrar_scanner():
         col3.metric("Puertos abiertos", resultado_scan["puertos_abiertos"])
         col4.metric("Duración", f"{resultado_scan['duracion_segundos']} s")
 
+        risk_summary = calculate_overall_risk(resultado_scan["resultados"])
+        executive_summary = generate_executive_summary(resultado_scan)
+        vulnerability_findings = analyze_service_vulnerabilities(
+            resultado_scan["resultados"]
+        )
+
+        st.divider()
+        st.subheader("Risk Dashboard")
+
+        col_risk_1, col_risk_2 = st.columns(2)
+
+        col_risk_1.metric("Overall Risk Score", risk_summary["overall_score"])
+        col_risk_2.metric("Assessment", risk_summary["assessment"])
+
+        if risk_summary["assessment"] in ["Critical", "High"]:
+            st.error(executive_summary)
+        elif risk_summary["assessment"] == "Medium":
+            st.warning(executive_summary)
+        else:
+            st.success(executive_summary)
+
+        if risk_summary["high_risk_services"]:
+            st.subheader("High Risk Services")
+            st.dataframe(risk_summary["high_risk_services"], width="stretch")
+
+        st.subheader("Vulnerability Findings")
+
+        if vulnerability_findings:
+            st.dataframe(vulnerability_findings, width="stretch")
+        else:
+            st.success("No vulnerability findings detected based on the current rules.")
+
+        if risk_summary["recommendations"]:
+            st.subheader("Recommendations")
+            for recommendation in risk_summary["recommendations"]:
+                st.write(f"- {recommendation}")
+
+        st.divider()
+
         st.write(f"Fecha: {resultado_scan['fecha']}")
         st.write(
             f"Rango analizado: {resultado_scan['puerto_inicio']} - {resultado_scan['puerto_fin']}"
@@ -116,14 +162,14 @@ def mostrar_scanner():
                     file_name="reporte_escaneo_aegis.csv",
                     mime="text/csv"
                 )
-                
+
             with col_html:
                 st.download_button(
-                   label="Descargar reporte HTML",
-                   data=reporte_html,
-                   file_name="reporte_escaneo_aegis.html",
-                   mime="text/html"
-    )
+                    label="Descargar reporte HTML",
+                    data=reporte_html,
+                    file_name="reporte_escaneo_aegis.html",
+                    mime="text/html"
+                )
 
         else:
             st.info("No se detectaron puertos abiertos en el rango indicado.")

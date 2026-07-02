@@ -228,3 +228,43 @@ def obtener_puertos_mas_detectados(limite=10):
     conn.close()
 
     return filas
+
+def get_scan_history():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            id,
+            fecha,
+            ip,
+            puertos_abiertos,
+            duracion_segundos
+        FROM scans
+        ORDER BY id ASC
+    """)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return rows
+
+
+def get_open_ports_by_scan():
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            scans.id,
+            scans.fecha,
+            scans.ip,
+            scans.puertos_abiertos
+        FROM scans
+        ORDER BY scans.id ASC
+    """)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return rows
