@@ -3,8 +3,13 @@ import socket
 
 def resolve_hostname(ip):
     try:
-        hostname = socket.gethostbyaddr(ip)[0]
+        hostname, _, _ = socket.gethostbyaddr(ip)
         return hostname
 
-    except Exception:
+    except (
+        socket.herror,
+        socket.gaierror,
+        TimeoutError,
+        OSError,
+    ):
         return "Unknown"

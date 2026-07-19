@@ -1,72 +1,93 @@
 from collections import Counter
 
 
-def detectar_fuerza_bruta(failed_logins, umbral=5):
-    contador_ips = Counter()
+def detect_brute_force(failed_logins, threshold=5):
+    attempts_by_ip = Counter()
 
-    for evento in failed_logins:
-        ip = evento.get("ip")
-        if ip:
-            contador_ips[ip] += 1
+    for event in failed_logins:
+        ip_address = event.get("ip")
 
-    alertas = []
+        if ip_address:
+            attempts_by_ip[ip_address] += 1
 
-    for ip, cantidad in contador_ips.items():
-        if cantidad >= umbral:
-            alertas.append({
-                "tipo": "Posible fuerza bruta",
-                "ip": ip,
-                "cantidad": cantidad,
-                "severidad": "Alta",
-                "descripcion": f"Se detectaron {cantidad} intentos fallidos desde la misma IP."
-            })
+    alerts = []
 
-    return alertas
+    for ip_address, attempt_count in attempts_by_ip.items():
+        if attempt_count >= threshold:
+            alerts.append(
+                {
+                    "type": "Possible brute-force attack",
+                    "ip": ip_address,
+                    "count": attempt_count,
+                    "severity": "High",
+                    "description": (
+                        f"{attempt_count} failed login attempts were "
+                        f"detected from the same IP address."
+                    ),
+                }
+            )
 
-
-def detectar_login_exitoso_despues_de_fallos(failed_logins, successful_logins):
-    fallos_por_ip = Counter()
-
-    for evento in failed_logins:
-        ip = evento.get("ip")
-        if ip:
-            fallos_por_ip[ip] += 1
-
-    alertas = []
-
-    for evento in successful_logins:
-        ip = evento.get("ip")
-
-        if ip and fallos_por_ip[ip] >= 3:
-            alertas.append({
-                "tipo": "Login exitoso después de múltiples fallos",
-                "ip": ip,
-                "cantidad": fallos_por_ip[ip],
-                "severidad": "Media",
-                "descripcion": f"La IP {ip} tuvo {fallos_por_ip[ip]} fallos y luego un login exitoso."
-            })
-
-    return alertas
+    return alerts
 
 
-def calcular_risk_score(resultados):
+def detect_successful_login_after_failures(
+    failed_logins,
+    successful_logins,
+    minimum_failures=3,
+):
+    failures_by_ip = Counter()
+
+    for event in failed_logins:
+        ip_address = event.get("ip")
+
+        if ip_address:
+            failures_by_ip[ip_address] += 1
+
+    alerts = []
+
+    for event in successful_logins:
+        ip_address = event.get("ip")
+        failure_count = failures_by_ip.get(ip_address, 0)
+
+        if ip_address and failure_count >= minimum_failures:
+            alerts.append(
+                {
+                    "type": "Successful login after multiple failures",
+                    "ip": ip_address,
+                    "count": failure_count,
+                    "severity": "Medium",
+                    "description": (
+                        f"The IP address {ip_address} generated "
+                        f"{failure_count} failed attempts before a "
+                        f"successful login."
+                    ),
+                }
+            )
+
+    return alerts
+
+
+def calculate_risk_score(results):
+    failed_logins = results.get("failed_logins", [])
+    suspicious_events = results.get("suspicious_events", [])
+    alerts = results.get("alerts", [])
+
     score = 0
+    score += len(failed_logins) * 3
+    score += len(suspicious_events) * 4
+    score += len(alerts) * 15
 
-    score += len(resultados.get("failed_logins", [])) * 3
-    score += len(resultados.get("eventos_sospechosos", [])) * 4
-    score += len(resultados.get("alertas", [])) * 15
-
-    if score > 100:
-        score = 100
-
-    return score
+    return min(score, 100)
 
 
-def clasificar_riesgo(score):
+def classify_risk(score):
     if score >= 80:
-        return "Crítico"
+        return "Critical"
+
     if score >= 60:
-        return "Alto"
+        return "High"
+
     if score >= 30:
-        return "Medio"
-    return "Bajo"
+        return "Medium"
+
+    return "Low"

@@ -1,9 +1,9 @@
-import socket
-import time
 import csv
 import io
-from datetime import datetime
+import socket
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 from services.service_risk import get_service_risk
 
@@ -33,153 +33,268 @@ COMMON_SERVICES = {
     8000: "HTTP Dev",
     8080: "HTTP Alt",
     8443: "HTTPS Alt",
-    8501: "Streamlit"
+    8501: "Streamlit",
 }
 
 
-def obtener_servicio(puerto):
-    if puerto in COMMON_SERVICES:
-        return COMMON_SERVICES[puerto]
+def get_service_name(port):
+    if port in COMMON_SERVICES:
+        return COMMON_SERVICES[port]
 
     try:
-        return socket.getservbyport(puerto, "tcp").upper()
-    except Exception:
+        return socket.getservbyport(port, "tcp").upper()
+    except OSError:
         return "Unknown"
 
 
-def obtener_banner(ip, puerto, timeout=1):
+def get_banner(ip, port, timeout=1):
     try:
-        with socket.create_connection((ip, puerto), timeout=timeout) as s:
-            s.settimeout(timeout)
+        with socket.create_connection(
+            (ip, port),
+            timeout=timeout,
+        ) as connection:
+            connection.settimeout(timeout)
 
-            if puerto in [80, 8080, 8000, 8501]:
-                s.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
-            elif puerto in [443, 8443]:
-                return "TLS/HTTPS detected. Banner not read without TLS handshake."
+            if port in {80, 8000, 8080, 8501}:
+                connection.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
+
+            elif port in {443, 8443}:
+                return (
+                    "TLS/HTTPS detected. "
+                    "Banner not read without a TLS handshake."
+                )
+
             else:
-                s.sendall(b"\r\n")
+                connection.sendall(b"\r\n")
 
             try:
-                banner = s.recv(1024).decode(errors="ignore").strip()
+                banner = (
+                    connection.recv(1024)
+                    .decode(errors="ignore")
+                    .strip()
+                )
+
                 return banner if banner else "No visible banner"
+
             except socket.timeout:
                 return "No banner response"
 
-    except Exception:
+    except (ConnectionError, OSError, socket.timeout):
         return "Not available"
 
 
-def escanear_puerto(ip, puerto, timeout=0.3, banner=False):
-    inicio = time.perf_counter()
+def scan_port(
+    ip,
+    port,
+    timeout=0.3,
+    banner=False,
+):
+    start_time = time.perf_counter()
 
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(timeout)
-            resultado = s.connect_ex((ip, puerto))
-            tiempo_respuesta = round((time.perf_counter() - inicio) * 1000, 4)
+        with socket.socket(
+            socket.AF_INET,
+            socket.SOCK_STREAM,
+        ) as connection:
+            connection.settimeout(timeout)
 
-            if resultado == 0:
-                servicio = obtener_servicio(puerto)
-                risk_info = get_service_risk(servicio)
+            connection_result = connection.connect_ex(
+                (ip, port)
+            )
 
-                return {
-                    "puerto": puerto,
-                    "estado": "Open",
-                    "servicio": servicio,
-                    "risk": risk_info["risk"],
-                    "risk_score": risk_info["score"],
-                    "recommendation": risk_info["recommendation"],
-                    "tiempo_ms": tiempo_respuesta,
-                    "banner": obtener_banner(ip, puerto) if banner else "Disabled"
-                }
+            response_time_ms = round(
+                (time.perf_counter() - start_time) * 1000,
+                4,
+            )
 
-    except Exception:
-        pass
+            if connection_result != 0:
+                return None
 
-    return None
+            service_name = get_service_name(port)
+            risk_info = get_service_risk(service_name)
+
+            return {
+                "port": port,
+                "status": "Open",
+                "service": service_name,
+                "risk": risk_info["risk"],
+                "risk_score": risk_info["score"],
+                "recommendation": risk_info["recommendation"],
+                "response_time_ms": response_time_ms,
+                "banner": (
+                    get_banner(ip, port, timeout)
+                    if banner
+                    else "Disabled"
+                ),
+            }
+
+    except (OSError, socket.timeout):
+        return None
 
 
-def escanear_rango(ip, puerto_inicio, puerto_fin, timeout=0.3, banner=False, workers=100):
-    resultados = []
-    inicio_scan = time.perf_counter()
-    total_puertos = puerto_fin - puerto_inicio + 1
+def scan_port_range(
+    ip,
+    start_port,
+    end_port,
+    timeout=0.3,
+    banner=False,
+    workers=100,
+):
+    if start_port > end_port:
+        raise ValueError(
+            "Start port cannot be greater than end port."
+        )
 
-    workers = min(workers, total_puertos)
+    total_ports = end_port - start_port + 1
+    worker_count = max(
+        1,
+        min(int(workers), total_ports),
+    )
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        tareas = {
-            executor.submit(escanear_puerto, ip, puerto, timeout, banner): puerto
-            for puerto in range(puerto_inicio, puerto_fin + 1)
-        }
+    results = []
+    scan_start_time = time.perf_counter()
 
-        for tarea in as_completed(tareas):
-            resultado = tarea.result()
-            if resultado:
-                resultados.append(resultado)
+    with ThreadPoolExecutor(
+        max_workers=worker_count
+    ) as executor:
+        tasks = [
+            executor.submit(
+                scan_port,
+                ip,
+                port,
+                timeout,
+                banner,
+            )
+            for port in range(start_port, end_port + 1)
+        ]
 
-    resultados.sort(key=lambda x: x["puerto"])
+        for task in as_completed(tasks):
+            result = task.result()
 
-    duracion = round(time.perf_counter() - inicio_scan, 2)
+            if result is not None:
+                results.append(result)
+
+    results.sort(
+        key=lambda result: result["port"]
+    )
+
+    duration_seconds = round(
+        time.perf_counter() - scan_start_time,
+        2,
+    )
+
+    scan_date = datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
     return {
         "ip": ip,
-        "puerto_inicio": puerto_inicio,
-        "puerto_fin": puerto_fin,
-        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "duracion_segundos": duracion,
-        "puertos_analizados": total_puertos,
-        "puertos_abiertos": len(resultados),
-        "resultados": resultados
+        "start_port": start_port,
+        "end_port": end_port,
+        "scan_date": scan_date,
+        "duration_seconds": duration_seconds,
+        "ports_scanned": total_ports,
+        "open_ports": len(results),
+        "results": results,
     }
 
 
-def generar_reporte_txt(resultado_scan):
-    reporte = f"""
-AEGIS SECURITY TOOLKIT - SCAN REPORT
+def generate_txt_report(scan_result):
+    lines = [
+        "AEGIS SECURITY TOOLKIT - SCAN REPORT",
+        "",
+        f"Target: {scan_result['ip']}",
+        f"Date: {scan_result['scan_date']}",
+        (
+            f"Range: {scan_result['start_port']} - "
+            f"{scan_result['end_port']}"
+        ),
+        f"Ports scanned: {scan_result['ports_scanned']}",
+        (
+            f"Duration: "
+            f"{scan_result['duration_seconds']} seconds"
+        ),
+        f"Open ports: {scan_result['open_ports']}",
+        "",
+        "RESULTS:",
+    ]
 
-Target: {resultado_scan['ip']}
-Date: {resultado_scan['fecha']}
-Range: {resultado_scan['puerto_inicio']} - {resultado_scan['puerto_fin']}
-Ports analyzed: {resultado_scan['puertos_analizados']}
-Duration: {resultado_scan['duracion_segundos']} seconds
-Open ports: {resultado_scan['puertos_abiertos']}
-
-RESULTS:
-"""
-
-    for item in resultado_scan["resultados"]:
-        reporte += (
-            f"\nPort: {item['puerto']}"
-            f"\nStatus: {item['estado']}"
-            f"\nService: {item['servicio']}"
-            f"\nRisk: {item.get('risk', 'Informational')}"
-            f"\nRisk Score: {item.get('risk_score', 0)}"
-            f"\nRecommendation: {item.get('recommendation', '')}"
-            f"\nTime: {item['tiempo_ms']} ms"
-            f"\nBanner: {item['banner']}"
-            f"\n-----------------------------\n"
+    for result in scan_result["results"]:
+        lines.extend(
+            [
+                "",
+                f"Port: {result['port']}",
+                f"Status: {result['status']}",
+                f"Service: {result['service']}",
+                (
+                    f"Risk: "
+                    f"{result.get('risk', 'Informational')}"
+                ),
+                (
+                    f"Risk Score: "
+                    f"{result.get('risk_score', 0)}"
+                ),
+                (
+                    f"Recommendation: "
+                    f"{result.get('recommendation', '')}"
+                ),
+                (
+                    f"Time: "
+                    f"{result['response_time_ms']} ms"
+                ),
+                f"Banner: {result['banner']}",
+                "-----------------------------",
+            ]
         )
 
-    return reporte
+    return "\n".join(lines)
 
 
-def generar_reporte_csv(resultado_scan):
-    salida = io.StringIO()
+def generate_csv_report(scan_result):
+    output = io.StringIO(newline="")
 
-    campos = [
-        "puerto",
-        "estado",
-        "servicio",
+    fields = [
+        "port",
+        "status",
+        "service",
         "risk",
         "risk_score",
         "recommendation",
-        "tiempo_ms",
-        "banner"
+        "response_time_ms",
+        "banner",
     ]
 
-    writer = csv.DictWriter(salida, fieldnames=campos)
+    writer = csv.DictWriter(
+        output,
+        fieldnames=fields,
+        extrasaction="ignore",
+        quoting=csv.QUOTE_ALL,
+        quotechar='"',
+        escapechar="\\",
+        lineterminator="\n",
+    )
 
     writer.writeheader()
-    writer.writerows(resultado_scan["resultados"])
 
-    return salida.getvalue()
+    for result in scan_result["results"]:
+        clean_result = {
+            field: result.get(field, "")
+            for field in fields
+        }
+
+        for field, value in clean_result.items():
+            if value is None:
+                clean_result[field] = ""
+
+            elif isinstance(value, str):
+                clean_result[field] = (
+                    value
+                    .replace("\r\n", " ")
+                    .replace("\r", " ")
+                    .replace("\n", " ")
+                    .replace("\x00", "")
+                )
+
+        writer.writerow(clean_result)
+
+    return output.getvalue()

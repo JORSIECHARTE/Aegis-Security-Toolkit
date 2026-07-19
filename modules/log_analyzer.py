@@ -2,113 +2,219 @@ import re
 from collections import Counter
 
 from services.security_rules import (
-    detectar_fuerza_bruta,
-    detectar_login_exitoso_despues_de_fallos,
-    calcular_risk_score,
-    clasificar_riesgo
+    calculate_risk_score,
+    classify_risk,
+    detect_brute_force,
+    detect_successful_login_after_failures,
 )
 
 
-def extraer_primera_ip(linea):
-    patron_ip = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
-    coincidencia = re.search(patron_ip, linea)
+IP_PATTERN = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
 
-    if coincidencia:
-        return coincidencia.group(0)
+FAILED_LOGIN_PATTERNS = [
+    "failed password",
+    "authentication failure",
+    "login failed",
+    "failed login",
+    "invalid user",
+]
+
+SUCCESSFUL_LOGIN_PATTERNS = [
+    "accepted password",
+    "login successful",
+    "session opened",
+]
+
+SUSPICIOUS_EVENT_PATTERNS = [
+    "root",
+    "admin",
+    "administrator",
+    "brute force",
+    "unauthorized",
+    "denied",
+]
+
+
+def extract_first_ip(line):
+    match = re.search(IP_PATTERN, line)
+
+    if match:
+        return match.group(0)
 
     return None
 
 
-def analizar_logs(contenido):
-    lineas = contenido.splitlines()
+def contains_any_pattern(text, patterns):
+    return any(pattern in text for pattern in patterns)
 
-    resultados = {
-        "total_lineas": len(lineas),
-        "failed_logins": [],
-        "successful_logins": [],
-        "ips_detectadas": [],
-        "eventos_sospechosos": [],
-        "alertas": []
-    }
 
-    patron_ip = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
-
-    for numero, linea in enumerate(lineas, start=1):
-        linea_lower = linea.lower()
-
-        ips = re.findall(patron_ip, linea)
-        resultados["ips_detectadas"].extend(ips)
-
-        ip_principal = extraer_primera_ip(linea)
-
-        if any(texto in linea_lower for texto in [
-            "failed password",
-            "authentication failure",
-            "login failed",
-            "failed login",
-            "invalid user"
-        ]):
-            resultados["failed_logins"].append({
-                "linea": numero,
-                "ip": ip_principal,
-                "contenido": linea
-            })
-
-        if any(texto in linea_lower for texto in [
-            "accepted password",
-            "login successful",
-            "session opened"
-        ]):
-            resultados["successful_logins"].append({
-                "linea": numero,
-                "ip": ip_principal,
-                "contenido": linea
-            })
-
-        if any(texto in linea_lower for texto in [
-            "root",
-            "admin",
-            "administrator",
-            "brute force",
-            "unauthorized",
-            "denied"
-        ]):
-            resultados["eventos_sospechosos"].append({
-                "linea": numero,
-                "ip": ip_principal,
-                "contenido": linea
-            })
-
-    contador_ips = Counter(resultados["ips_detectadas"])
-
-    resultados["ips_frecuentes"] = [
-        {"ip": ip, "cantidad": cantidad}
-        for ip, cantidad in contador_ips.most_common()
+def convert_events_to_compatibility_format(events):
+    return [
+        {
+            "linea": event["line"],
+            "ip": event["ip"],
+            "contenido": event["content"],
+        }
+        for event in events
     ]
 
-    alertas_fuerza_bruta = detectar_fuerza_bruta(
-        resultados["failed_logins"],
-        umbral=5
+
+def convert_alerts_to_compatibility_format(alerts):
+    return [
+        {
+            "tipo": alert["type"],
+            "ip": alert["ip"],
+            "cantidad": alert["count"],
+            "severidad": alert["severity"],
+            "descripcion": alert["description"],
+        }
+        for alert in alerts
+    ]
+
+
+def analyze_logs(content):
+    lines = content.splitlines()
+
+    failed_logins = []
+    successful_logins = []
+    detected_ips = []
+    suspicious_events = []
+
+    for line_number, line in enumerate(lines, start=1):
+        lowercase_line = line.lower()
+
+        detected_ips.extend(
+            re.findall(IP_PATTERN, line)
+        )
+
+        event = {
+            "line": line_number,
+            "ip": extract_first_ip(line),
+            "content": line,
+        }
+
+        if contains_any_pattern(
+            lowercase_line,
+            FAILED_LOGIN_PATTERNS,
+        ):
+            failed_logins.append(event.copy())
+
+        if contains_any_pattern(
+            lowercase_line,
+            SUCCESSFUL_LOGIN_PATTERNS,
+        ):
+            successful_logins.append(event.copy())
+
+        if contains_any_pattern(
+            lowercase_line,
+            SUSPICIOUS_EVENT_PATTERNS,
+        ):
+            suspicious_events.append(event.copy())
+
+    ip_counter = Counter(detected_ips)
+
+    frequent_ips = [
+        {
+            "ip": ip_address,
+            "count": count,
+        }
+        for ip_address, count in ip_counter.most_common()
+    ]
+
+    brute_force_alerts = detect_brute_force(
+        failed_logins,
+        threshold=5,
     )
 
-    alertas_login_post_fallo = detectar_login_exitoso_despues_de_fallos(
-        resultados["failed_logins"],
-        resultados["successful_logins"]
+    post_failure_login_alerts = (
+        detect_successful_login_after_failures(
+            failed_logins,
+            successful_logins,
+        )
     )
 
-    resultados["alertas"] = alertas_fuerza_bruta + alertas_login_post_fallo
+    alerts = brute_force_alerts + post_failure_login_alerts
 
-    risk_score = calcular_risk_score(resultados)
-    nivel_riesgo = clasificar_riesgo(risk_score)
-
-    resultados["resumen"] = {
-        "intentos_fallidos": len(resultados["failed_logins"]),
-        "logins_exitosos": len(resultados["successful_logins"]),
-        "eventos_sospechosos": len(resultados["eventos_sospechosos"]),
-        "ips_unicas": len(contador_ips),
-        "alertas": len(resultados["alertas"]),
-        "risk_score": risk_score,
-        "nivel_riesgo": nivel_riesgo
+    results_for_risk_calculation = {
+        "failed_logins": failed_logins,
+        "suspicious_events": suspicious_events,
+        "alerts": alerts,
     }
 
-    return resultados
+    risk_score = calculate_risk_score(
+        results_for_risk_calculation
+    )
+    risk_level = classify_risk(risk_score)
+
+    summary = {
+        "failed_attempts": len(failed_logins),
+        "successful_logins": len(successful_logins),
+        "suspicious_events": len(suspicious_events),
+        "unique_ips": len(ip_counter),
+        "alerts": len(alerts),
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+    }
+
+    compatibility_failed_logins = (
+        convert_events_to_compatibility_format(
+            failed_logins
+        )
+    )
+    compatibility_successful_logins = (
+        convert_events_to_compatibility_format(
+            successful_logins
+        )
+    )
+    compatibility_suspicious_events = (
+        convert_events_to_compatibility_format(
+            suspicious_events
+        )
+    )
+    compatibility_alerts = (
+        convert_alerts_to_compatibility_format(
+            alerts
+        )
+    )
+
+    compatibility_frequent_ips = [
+        {
+            "ip": item["ip"],
+            "cantidad": item["count"],
+        }
+        for item in frequent_ips
+    ]
+
+    compatibility_summary = {
+        "intentos_fallidos": summary["failed_attempts"],
+        "logins_exitosos": summary["successful_logins"],
+        "eventos_sospechosos": summary["suspicious_events"],
+        "ips_unicas": summary["unique_ips"],
+        "alertas": summary["alerts"],
+        "risk_score": summary["risk_score"],
+        "nivel_riesgo": summary["risk_level"],
+    }
+
+    return {
+        "total_lines": len(lines),
+        "failed_logins": failed_logins,
+        "successful_logins": successful_logins,
+        "detected_ips": detected_ips,
+        "frequent_ips": frequent_ips,
+        "suspicious_events": suspicious_events,
+        "alerts": alerts,
+        "summary": summary,
+
+        # Temporary compatibility keys
+        "total_lineas": len(lines),
+        "ips_detectadas": detected_ips,
+        "ips_frecuentes": compatibility_frequent_ips,
+        "eventos_sospechosos": compatibility_suspicious_events,
+        "alertas": compatibility_alerts,
+        "resumen": compatibility_summary,
+    }
+
+
+# Temporary compatibility aliases
+extraer_primera_ip = extract_first_ip
+analizar_logs = analyze_logs

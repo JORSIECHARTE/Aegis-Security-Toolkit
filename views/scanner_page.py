@@ -4,172 +4,227 @@ from services.risk_summary import (
     calculate_overall_risk,
     generate_executive_summary
 )
-
 from services.vulnerability_rules import analyze_service_vulnerabilities
 
 from modules.scanner import (
-    escanear_rango,
-    generar_reporte_txt,
-    generar_reporte_csv
+    scan_port_range,
+    generate_txt_report,
+    generate_csv_report
 )
+from modules.report_generator import generate_html_scan_report
+from database.db import save_scan
 
-from database.db import guardar_scan
-from modules.report_generator import generar_html_scan
 
-
-def mostrar_scanner():
-    st.header("Escáner de Puertos")
+def show_port_scanner():
+    st.header("Port Scanner")
 
     st.warning(
-        "Usar solo sobre equipos propios, localhost, red local autorizada o laboratorio personal."
+        "Use this module only on systems you own, localhost, "
+        "authorized networks, or personal lab environments."
     )
 
-    ip = st.text_input("IP o hostname objetivo", value="127.0.0.1")
+    target = st.text_input(
+        "Target IP or hostname",
+        value="127.0.0.1"
+    )
 
-    col1, col2, col3 = st.columns(3)
+    start_column, end_column, timeout_column = st.columns(3)
 
-    with col1:
-        puerto_inicio = st.number_input(
-            "Puerto inicial",
+    with start_column:
+        start_port = st.number_input(
+            "Start port",
             min_value=1,
             max_value=65535,
             value=1
         )
 
-    with col2:
-        puerto_fin = st.number_input(
-            "Puerto final",
+    with end_column:
+        end_port = st.number_input(
+            "End port",
             min_value=1,
             max_value=65535,
             value=1024
         )
 
-    with col3:
+    with timeout_column:
         timeout = st.selectbox(
-            "Timeout por puerto",
+            "Timeout per port",
             [0.3, 0.5, 1.0, 2.0],
             index=0
         )
 
     workers = st.slider(
-        "Cantidad de hilos simultáneos",
+        "Concurrent threads",
         min_value=10,
         max_value=200,
         value=100,
         step=10
     )
 
-    banner = st.checkbox("Intentar obtener banner del servicio")
+    banner_enabled = st.checkbox("Enable banner grabbing")
 
-    if st.button("Iniciar escaneo"):
+    if not st.button("Start Scan"):
+        return
 
-        if puerto_inicio > puerto_fin:
-            st.error("El puerto inicial no puede ser mayor que el puerto final.")
-            return
+    if start_port > end_port:
+        st.error("Start port cannot be greater than end port.")
+        return
 
-        with st.spinner("Escaneando puertos..."):
-            resultado_scan = escanear_rango(
-                ip=ip,
-                puerto_inicio=int(puerto_inicio),
-                puerto_fin=int(puerto_fin),
-                timeout=float(timeout),
-                banner=banner,
-                workers=int(workers)
-            )
-
-        scan_id = guardar_scan(resultado_scan)
-        st.success(f"Escaneo guardado en historial con ID {scan_id}.")
-
-        st.subheader("Resumen del escaneo")
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        col1.metric("Objetivo", resultado_scan["ip"])
-        col2.metric("Puertos analizados", resultado_scan["puertos_analizados"])
-        col3.metric("Puertos abiertos", resultado_scan["puertos_abiertos"])
-        col4.metric("Duración", f"{resultado_scan['duracion_segundos']} s")
-
-        risk_summary = calculate_overall_risk(resultado_scan["resultados"])
-        executive_summary = generate_executive_summary(resultado_scan)
-        vulnerability_findings = analyze_service_vulnerabilities(
-            resultado_scan["resultados"]
+    with st.spinner("Scanning ports..."):
+        scan_result = scan_port_range(
+            ip=target,
+            start_port=int(start_port),
+            end_port=int(end_port),
+            timeout=float(timeout),
+            banner=banner_enabled,
+            workers=int(workers)
         )
 
-        st.divider()
-        st.subheader("Risk Dashboard")
+    scan_id = save_scan(scan_result)
 
-        col_risk_1, col_risk_2 = st.columns(2)
+    st.success(
+        f"Scan saved to history with ID {scan_id}."
+    )
 
-        col_risk_1.metric("Overall Risk Score", risk_summary["overall_score"])
-        col_risk_2.metric("Assessment", risk_summary["assessment"])
+    st.subheader("Scan Summary")
 
-        if risk_summary["assessment"] in ["Critical", "High"]:
-            st.error(executive_summary)
-        elif risk_summary["assessment"] == "Medium":
-            st.warning(executive_summary)
-        else:
-            st.success(executive_summary)
+    target_column, scanned_column, open_column, duration_column = st.columns(4)
 
-        if risk_summary["high_risk_services"]:
-            st.subheader("High Risk Services")
-            st.dataframe(risk_summary["high_risk_services"], width="stretch")
+    target_column.metric(
+        "Target",
+        scan_result["ip"]
+    )
 
-        st.subheader("Vulnerability Findings")
+    scanned_column.metric(
+        "Ports Scanned",
+        scan_result["ports_scanned"]
+    )
 
-        if vulnerability_findings:
-            st.dataframe(vulnerability_findings, width="stretch")
-        else:
-            st.success("No vulnerability findings detected based on the current rules.")
+    open_column.metric(
+        "Open Ports",
+        scan_result["open_ports"]
+    )
 
-        if risk_summary["recommendations"]:
-            st.subheader("Recommendations")
-            for recommendation in risk_summary["recommendations"]:
-                st.write(f"- {recommendation}")
+    duration_column.metric(
+        "Duration",
+        f"{scan_result['duration_seconds']} s"
+    )
 
-        st.divider()
+    risk_summary = calculate_overall_risk(
+        scan_result["results"]
+    )
 
-        st.write(f"Fecha: {resultado_scan['fecha']}")
-        st.write(
-            f"Rango analizado: {resultado_scan['puerto_inicio']} - {resultado_scan['puerto_fin']}"
+    executive_summary = generate_executive_summary(
+        scan_result
+    )
+
+    vulnerability_findings = analyze_service_vulnerabilities(
+        scan_result["results"]
+    )
+
+    st.divider()
+    st.subheader("Risk Dashboard")
+
+    score_column, assessment_column = st.columns(2)
+
+    score_column.metric(
+        "Overall Risk Score",
+        risk_summary["overall_score"]
+    )
+
+    assessment_column.metric(
+        "Assessment",
+        risk_summary["assessment"]
+    )
+
+    assessment = risk_summary["assessment"]
+
+    if assessment in ["Critical", "High"]:
+        st.error(executive_summary)
+    elif assessment == "Medium":
+        st.warning(executive_summary)
+    else:
+        st.success(executive_summary)
+
+    if risk_summary["high_risk_services"]:
+        st.subheader("High-Risk Services")
+
+        st.dataframe(
+            risk_summary["high_risk_services"],
+            width="stretch"
         )
 
-        if resultado_scan["resultados"]:
-            st.subheader("Puertos abiertos detectados")
+    st.subheader("Vulnerability Findings")
 
-            st.dataframe(
-                resultado_scan["resultados"],
-                width="stretch"
-            )
+    if vulnerability_findings:
+        st.dataframe(
+            vulnerability_findings,
+            width="stretch"
+        )
+    else:
+        st.success(
+            "No vulnerability findings were detected "
+            "based on the current rules."
+        )
 
-            reporte_txt = generar_reporte_txt(resultado_scan)
-            reporte_csv = generar_reporte_csv(resultado_scan)
-            reporte_html = generar_html_scan(resultado_scan)
+    if risk_summary["recommendations"]:
+        st.subheader("Recommendations")
 
-            col_txt, col_csv, col_html = st.columns(3)
+        for recommendation in risk_summary["recommendations"]:
+            st.write(f"- {recommendation}")
 
-            with col_txt:
-                st.download_button(
-                    label="Descargar reporte TXT",
-                    data=reporte_txt,
-                    file_name="reporte_escaneo_aegis.txt",
-                    mime="text/plain"
-                )
+    st.divider()
 
-            with col_csv:
-                st.download_button(
-                    label="Descargar reporte CSV",
-                    data=reporte_csv,
-                    file_name="reporte_escaneo_aegis.csv",
-                    mime="text/csv"
-                )
+    st.write(f"Date: {scan_result['scan_date']}")
+    st.write(
+        f"Port range: "
+        f"{scan_result['start_port']} - {scan_result['end_port']}"
+    )
 
-            with col_html:
-                st.download_button(
-                    label="Descargar reporte HTML",
-                    data=reporte_html,
-                    file_name="reporte_escaneo_aegis.html",
-                    mime="text/html"
-                )
+    if not scan_result["results"]:
+        st.info(
+            "No open ports were detected in the selected range."
+        )
+        return
 
-        else:
-            st.info("No se detectaron puertos abiertos en el rango indicado.")
+    st.subheader("Open Ports")
+
+    st.dataframe(
+        scan_result["results"],
+        width="stretch"
+    )
+
+    txt_report = generate_txt_report(scan_result)
+    csv_report = generate_csv_report(scan_result)
+
+    # This generator still uses its previous Spanish function name.
+    # It will be renamed when report_generator.py is refactored.
+    html_report = generate_html_scan_report(scan_result)
+
+    txt_column, csv_column, html_column = st.columns(3)
+
+    with txt_column:
+        st.download_button(
+            label="Download TXT Report",
+            data=txt_report,
+            file_name="aegis_scan_report.txt",
+            mime="text/plain"
+        )
+
+    with csv_column:
+        st.download_button(
+            label="Download CSV Report",
+            data=csv_report,
+            file_name="aegis_scan_report.csv",
+            mime="text/csv"
+        )
+
+    with html_column:
+        st.download_button(
+            label="Download HTML Report",
+            data=html_report,
+            file_name="aegis_advanced_report.html",
+            mime="text/html"
+        )
+
+

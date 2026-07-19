@@ -1,86 +1,195 @@
 import streamlit as st
 
-from modules.log_analyzer import analizar_logs
+from modules.log_analyzer import analizar_logs as analyze_logs
 
 
-def mostrar_log_analyzer():
-    st.header("Analizador de Logs")
+RISK_LEVEL_TRANSLATIONS = {
+    "Crítico": "Critical",
+    "Alto": "High",
+    "Medio": "Medium",
+    "Bajo": "Low",
+    "Critical": "Critical",
+    "High": "High",
+    "Medium": "Medium",
+    "Low": "Low",
+}
 
-    st.info("Subí un archivo .log o .txt para detectar eventos básicos y avanzados de seguridad.")
 
-    archivo = st.file_uploader(
-        "Seleccionar archivo de log",
-        type=["log", "txt"]
+def show_log_analyzer():
+    st.header("Log Analyzer")
+
+    st.info(
+        "Upload a .log or .txt file to detect basic and advanced "
+        "security events."
     )
 
-    if archivo is None:
+    uploaded_file = st.file_uploader(
+        "Select a log file",
+        type=["log", "txt"],
+    )
+
+    if uploaded_file is None:
         return
 
-    contenido = archivo.read().decode("utf-8", errors="ignore")
+    file_content = uploaded_file.read().decode(
+        "utf-8",
+        errors="ignore",
+    )
 
-    resultado = analizar_logs(contenido)
+    result = analyze_logs(file_content)
 
-    st.subheader("Resumen de Seguridad")
+    summary = result.get(
+        "summary",
+        result.get("resumen", {}),
+    )
 
-    col1, col2, col3, col4 = st.columns(4)
+    total_lines = result.get(
+        "total_lines",
+        result.get("total_lineas", 0),
+    )
+    failed_attempts = summary.get(
+        "failed_attempts",
+        summary.get("intentos_fallidos", 0),
+    )
+    alert_count = summary.get(
+        "alerts",
+        summary.get("alertas", 0),
+    )
+    risk_score = summary.get(
+        "risk_score",
+        0,
+    )
+    risk_level = summary.get(
+        "risk_level",
+        summary.get("nivel_riesgo", "Low"),
+    )
 
-    col1.metric("Líneas analizadas", resultado["total_lineas"])
-    col2.metric("Intentos fallidos", resultado["resumen"]["intentos_fallidos"])
-    col3.metric("Alertas", resultado["resumen"]["alertas"])
-    col4.metric("Risk Score", f"{resultado['resumen']['risk_score']}/100")
+    alerts = result.get(
+        "alerts",
+        result.get("alertas", []),
+    )
+    frequent_ips = result.get(
+        "frequent_ips",
+        result.get("ips_frecuentes", []),
+    )
+    suspicious_events = result.get(
+        "suspicious_events",
+        result.get("eventos_sospechosos", []),
+    )
+    failed_logins = result.get(
+        "failed_logins",
+        [],
+    )
+    successful_logins = result.get(
+        "successful_logins",
+        [],
+    )
 
-    nivel = resultado["resumen"]["nivel_riesgo"]
+    displayed_risk_level = RISK_LEVEL_TRANSLATIONS.get(
+        risk_level,
+        risk_level,
+    )
 
-    if nivel == "Crítico":
-        st.error(f"Nivel de riesgo: {nivel}")
-    elif nivel == "Alto":
-        st.warning(f"Nivel de riesgo: {nivel}")
-    elif nivel == "Medio":
-        st.info(f"Nivel de riesgo: {nivel}")
+    st.subheader("Security Summary")
+
+    (
+        lines_column,
+        failed_column,
+        alerts_column,
+        risk_column,
+    ) = st.columns(4)
+
+    lines_column.metric(
+        "Lines analyzed",
+        total_lines,
+    )
+    failed_column.metric(
+        "Failed attempts",
+        failed_attempts,
+    )
+    alerts_column.metric(
+        "Alerts",
+        alert_count,
+    )
+    risk_column.metric(
+        "Risk score",
+        f"{risk_score}/100",
+    )
+
+    if displayed_risk_level == "Critical":
+        st.error(f"Risk level: {displayed_risk_level}")
+    elif displayed_risk_level == "High":
+        st.warning(f"Risk level: {displayed_risk_level}")
+    elif displayed_risk_level == "Medium":
+        st.info(f"Risk level: {displayed_risk_level}")
     else:
-        st.success(f"Nivel de riesgo: {nivel}")
+        st.success(f"Risk level: {displayed_risk_level}")
 
     st.divider()
 
-    st.subheader("Alertas Detectadas")
+    st.subheader("Detected Alerts")
 
-    if resultado["alertas"]:
-        st.dataframe(resultado["alertas"], width="stretch")
+    if alerts:
+        st.dataframe(
+            alerts,
+            width="stretch",
+            hide_index=True,
+        )
     else:
-        st.success("No se detectaron alertas avanzadas.")
+        st.success("No advanced alerts were detected.")
 
     st.divider()
 
-    col_ips, col_eventos = st.columns(2)
+    ip_column, events_column = st.columns(2)
 
-    with col_ips:
-        st.subheader("IPs detectadas")
+    with ip_column:
+        st.subheader("Detected IP Addresses")
 
-        if resultado["ips_frecuentes"]:
-            st.dataframe(resultado["ips_frecuentes"], width="stretch")
+        if frequent_ips:
+            st.dataframe(
+                frequent_ips,
+                width="stretch",
+                hide_index=True,
+            )
         else:
-            st.info("No se detectaron IPs.")
+            st.info("No IP addresses were detected.")
 
-    with col_eventos:
-        st.subheader("Eventos sospechosos")
+    with events_column:
+        st.subheader("Suspicious Events")
 
-        if resultado["eventos_sospechosos"]:
-            st.dataframe(resultado["eventos_sospechosos"], width="stretch")
+        if suspicious_events:
+            st.dataframe(
+                suspicious_events,
+                width="stretch",
+                hide_index=True,
+            )
         else:
-            st.success("No se detectaron eventos sospechosos.")
+            st.success("No suspicious events were detected.")
 
     st.divider()
 
-    st.subheader("Intentos fallidos de login")
+    st.subheader("Failed Login Attempts")
 
-    if resultado["failed_logins"]:
-        st.dataframe(resultado["failed_logins"], width="stretch")
+    if failed_logins:
+        st.dataframe(
+            failed_logins,
+            width="stretch",
+            hide_index=True,
+        )
     else:
-        st.success("No se detectaron intentos fallidos.")
+        st.success("No failed login attempts were detected.")
 
-    st.subheader("Logins exitosos")
+    st.subheader("Successful Logins")
 
-    if resultado["successful_logins"]:
-        st.dataframe(resultado["successful_logins"], width="stretch")
+    if successful_logins:
+        st.dataframe(
+            successful_logins,
+            width="stretch",
+            hide_index=True,
+        )
     else:
-        st.info("No se detectaron logins exitosos.")
+        st.info("No successful logins were detected.")
+
+
+# Temporary compatibility alias
+mostrar_log_analyzer = show_log_analyzer

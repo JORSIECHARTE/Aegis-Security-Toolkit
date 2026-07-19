@@ -1,64 +1,103 @@
 import streamlit as st
 
 from database.db import (
-    obtener_scans,
-    obtener_resultados_scan
+    get_scan_results,
+    get_scans,
 )
 
 
-def mostrar_reportes():
-    st.header("Historial de Escaneos")
+def show_reports():
+    st.header("Scan History")
 
-    scans = obtener_scans()
+    scans = get_scans()
 
     if not scans:
-        st.info("Todavía no hay escaneos guardados.")
+        st.info("No scans have been saved yet.")
         return
 
-    scans_formateados = []
+    formatted_scans = [
+        {
+            "id": scan_id,
+            "date": scan_date,
+            "target": ip_address,
+            "start_port": start_port,
+            "end_port": end_port,
+            "ports_scanned": ports_scanned,
+            "open_ports": open_ports,
+            "duration_seconds": duration_seconds,
+        }
+        for (
+            scan_id,
+            scan_date,
+            ip_address,
+            start_port,
+            end_port,
+            ports_scanned,
+            open_ports,
+            duration_seconds,
+        ) in scans
+    ]
 
-    for scan in scans:
-        scans_formateados.append({
-            "id": scan[0],
-            "fecha": scan[1],
-            "ip": scan[2],
-            "puerto_inicio": scan[3],
-            "puerto_fin": scan[4],
-            "puertos_analizados": scan[5],
-            "puertos_abiertos": scan[6],
-            "duracion_segundos": scan[7]
-        })
-
-    st.dataframe(scans_formateados, width="stretch")
-
-    opciones = {
-        f"ID {scan[0]} | {scan[2]} | {scan[1]}": scan[0]
-        for scan in scans
-    }
-
-    seleccion = st.selectbox(
-        "Seleccionar escaneo para ver detalle",
-        list(opciones.keys())
+    st.dataframe(
+        formatted_scans,
+        width="stretch",
+        hide_index=True,
     )
 
-    scan_id = opciones[seleccion]
+    scan_options = {
+        f"ID {scan_id} | {ip_address} | {scan_date}": scan_id
+        for (
+            scan_id,
+            scan_date,
+            ip_address,
+            _,
+            _,
+            _,
+            _,
+            _,
+        ) in scans
+    }
 
-    resultados = obtener_resultados_scan(scan_id)
+    selected_scan = st.selectbox(
+        "Select a scan to view its details",
+        list(scan_options.keys()),
+    )
 
-    if not resultados:
-        st.info("Ese escaneo no tiene puertos abiertos registrados.")
+    scan_id = scan_options[selected_scan]
+
+    scan_results = get_scan_results(scan_id)
+
+    if not scan_results:
+        st.info(
+            "This scan does not have any recorded open ports."
+        )
         return
 
-    detalle = []
+    formatted_results = [
+        {
+            "port": port,
+            "status": status,
+            "service": service,
+            "response_time_ms": response_time_ms,
+            "banner": banner,
+        }
+        for (
+            port,
+            status,
+            service,
+            response_time_ms,
+            banner,
+        ) in scan_results
+    ]
 
-    for r in resultados:
-        detalle.append({
-            "puerto": r[0],
-            "estado": r[1],
-            "servicio": r[2],
-            "tiempo_ms": r[3],
-            "banner": r[4]
-        })
+    st.subheader(f"Scan Details — ID {scan_id}")
 
-    st.subheader(f"Detalle del escaneo ID {scan_id}")
-    st.dataframe(detalle, width="stretch")
+    st.dataframe(
+        formatted_results,
+        width="stretch",
+        hide_index=True,
+    )
+
+
+# Temporary compatibility alias
+mostrar_reportes = show_reports

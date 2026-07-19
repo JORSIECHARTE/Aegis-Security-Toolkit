@@ -6,19 +6,21 @@ def calculate_overall_risk(scan_results):
     for item in scan_results:
         score = item.get("risk_score", 0)
         risk = item.get("risk", "Unknown")
-        service = item.get("servicio", "Unknown")
-        port = item.get("puerto", "Unknown")
+        service = item.get("service", "Unknown")
+        port = item.get("port", "Unknown")
         recommendation = item.get("recommendation", "")
 
         total_score += score
 
-        if risk == "High":
-            high_risk_services.append({
-                "port": port,
-                "service": service,
-                "risk": risk,
-                "score": score
-            })
+        if risk in {"Critical", "High"}:
+            high_risk_services.append(
+                {
+                    "port": port,
+                    "service": service,
+                    "risk": risk,
+                    "score": score,
+                }
+            )
 
         if (
             recommendation
@@ -40,20 +42,20 @@ def calculate_overall_risk(scan_results):
         "overall_score": total_score,
         "assessment": assessment,
         "high_risk_services": high_risk_services,
-        "recommendations": recommendations
+        "recommendations": recommendations,
     }
 
 
 def generate_executive_summary(scan_result):
-    risk_summary = calculate_overall_risk(
-        scan_result["resultados"]
-    )
+    scan_results = scan_result["results"]
+    risk_summary = calculate_overall_risk(scan_results)
 
-    open_ports = scan_result["puertos_abiertos"]
+    open_ports = scan_result["open_ports"]
     target = scan_result["ip"]
 
     summary = (
-        f"The scan against {target} detected {open_ports} open ports. "
+        f"The scan against {target} detected "
+        f"{open_ports} open ports. "
         f"The overall risk assessment is "
         f"{risk_summary['assessment']} "
         f"with a total score of "
@@ -62,12 +64,15 @@ def generate_executive_summary(scan_result):
 
     if risk_summary["high_risk_services"]:
         services = ", ".join(
-            f"{item['service']} on port {item['port']}"
+            (
+                f"{item['service']} "
+                f"on port {item['port']}"
+            )
             for item in risk_summary["high_risk_services"]
         )
 
         summary += (
-            f" High-risk services detected: "
+            " High-risk services detected: "
             f"{services}."
         )
 

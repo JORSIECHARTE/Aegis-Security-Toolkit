@@ -1,47 +1,112 @@
 import streamlit as st
 
-from modules.password_checker import analizar_password
+from modules.password_checker import analizar_password as analyze_password
 
 
-def mostrar_password_checker():
-    st.header("Analizador de Contraseñas")
+LEVEL_TRANSLATIONS = {
+    "Fuerte": "Strong",
+    "Media": "Moderate",
+    "Débil": "Weak",
+    "Strong": "Strong",
+    "Moderate": "Moderate",
+    "Weak": "Weak",
+}
 
-    st.info("El análisis se realiza localmente. La contraseña ingresada no se guarda ni se registra.")
 
-    password = st.text_input(
-        "Ingrese una contraseña",
-        type="password"
+def show_password_checker():
+    st.header("Password Analyzer")
+
+    st.info(
+        "The analysis is performed locally. "
+        "The entered password is not stored or logged."
     )
 
-    if st.button("Analizar"):
+    password = st.text_input(
+        "Enter a password",
+        type="password",
+    )
 
-        if not password:
-            st.warning("Ingrese una contraseña.")
-            return
+    if not st.button("Analyze"):
+        return
 
-        resultado = analizar_password(password)
+    if not password:
+        st.warning("Enter a password before running the analysis.")
+        return
 
-        st.subheader(f"Resultado: {resultado['nivel']}")
+    result = analyze_password(password)
 
-        col1, col2, col3 = st.columns(3)
+    level = result.get(
+        "level",
+        result.get("nivel", "Unknown"),
+    )
+    score = result.get(
+        "score",
+        result.get("puntuacion", 0),
+    )
+    entropy = result.get(
+        "entropy",
+        result.get("entropia", 0),
+    )
+    estimated_time = result.get(
+        "estimated_time",
+        result.get("tiempo_estimado", "Unknown"),
+    )
+    observations = result.get(
+        "observations",
+        result.get("observaciones", []),
+    )
+    recommendations = result.get(
+        "recommendations",
+        result.get("recomendaciones", []),
+    )
 
-        col1.metric("Puntuación", resultado["puntuacion"])
-        col2.metric("Entropía estimada", f"{resultado['entropia']} bits")
-        col3.metric("Fuerza bruta", resultado["tiempo_estimado"])
+    displayed_level = LEVEL_TRANSLATIONS.get(
+        level,
+        level,
+    )
 
-        if resultado["nivel"] == "Fuerte":
-            st.success("La contraseña cumple buenas prácticas básicas.")
-        elif resultado["nivel"] == "Media":
-            st.warning("La contraseña podría mejorarse.")
-        else:
-            st.error("La contraseña es débil.")
+    st.subheader(f"Result: {displayed_level}")
 
-        if resultado["observaciones"]:
-            st.subheader("Observaciones")
-            for obs in resultado["observaciones"]:
-                st.write(f"- {obs}")
+    score_column, entropy_column, brute_force_column = st.columns(3)
 
-        if resultado["recomendaciones"]:
-            st.subheader("Recomendaciones")
-            for rec in resultado["recomendaciones"]:
-                st.write(f"- {rec}")
+    score_column.metric(
+        "Score",
+        score,
+    )
+    entropy_column.metric(
+        "Estimated entropy",
+        f"{entropy} bits",
+    )
+    brute_force_column.metric(
+        "Brute-force estimate",
+        estimated_time,
+    )
+
+    if displayed_level == "Strong":
+        st.success(
+            "The password meets basic security recommendations."
+        )
+    elif displayed_level == "Moderate":
+        st.warning(
+            "The password provides moderate protection but could be improved."
+        )
+    else:
+        st.error(
+            "The password is weak and should be replaced."
+        )
+
+    if observations:
+        st.subheader("Observations")
+
+        for observation in observations:
+            st.write(f"- {observation}")
+
+    if recommendations:
+        st.subheader("Recommendations")
+
+        for recommendation in recommendations:
+            st.write(f"- {recommendation}")
+
+
+# Temporary compatibility alias
+mostrar_password_checker = show_password_checker
