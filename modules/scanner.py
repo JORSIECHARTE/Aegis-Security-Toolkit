@@ -5,6 +5,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
+from config import (
+    BANNER_RECEIVE_SIZE,
+    DEFAULT_BANNER_TIMEOUT,
+    DEFAULT_SCAN_TIMEOUT,
+    DEFAULT_SCAN_WORKERS,
+)
 from services.service_risk import get_service_risk
 
 
@@ -47,7 +53,11 @@ def get_service_name(port):
         return "Unknown"
 
 
-def get_banner(ip, port, timeout=1):
+def get_banner(
+    ip,
+    port,
+    timeout=DEFAULT_BANNER_TIMEOUT,
+):
     try:
         with socket.create_connection(
             (ip, port),
@@ -56,7 +66,9 @@ def get_banner(ip, port, timeout=1):
             connection.settimeout(timeout)
 
             if port in {80, 8000, 8080, 8501}:
-                connection.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
+                connection.sendall(
+                    b"HEAD / HTTP/1.0\r\n\r\n"
+                )
 
             elif port in {443, 8443}:
                 return (
@@ -69,24 +81,32 @@ def get_banner(ip, port, timeout=1):
 
             try:
                 banner = (
-                    connection.recv(1024)
+                    connection.recv(BANNER_RECEIVE_SIZE)
                     .decode(errors="ignore")
                     .strip()
                 )
 
-                return banner if banner else "No visible banner"
+                return (
+                    banner
+                    if banner
+                    else "No visible banner"
+                )
 
             except socket.timeout:
                 return "No banner response"
 
-    except (ConnectionError, OSError, socket.timeout):
+    except (
+        ConnectionError,
+        OSError,
+        socket.timeout,
+    ):
         return "Not available"
 
 
 def scan_port(
     ip,
     port,
-    timeout=0.3,
+    timeout=DEFAULT_SCAN_TIMEOUT,
     banner=False,
 ):
     start_time = time.perf_counter()
@@ -103,7 +123,11 @@ def scan_port(
             )
 
             response_time_ms = round(
-                (time.perf_counter() - start_time) * 1000,
+                (
+                    time.perf_counter()
+                    - start_time
+                )
+                * 1000,
                 4,
             )
 
@@ -111,7 +135,9 @@ def scan_port(
                 return None
 
             service_name = get_service_name(port)
-            risk_info = get_service_risk(service_name)
+            risk_info = get_service_risk(
+                service_name
+            )
 
             return {
                 "port": port,
@@ -119,16 +145,25 @@ def scan_port(
                 "service": service_name,
                 "risk": risk_info["risk"],
                 "risk_score": risk_info["score"],
-                "recommendation": risk_info["recommendation"],
+                "recommendation": (
+                    risk_info["recommendation"]
+                ),
                 "response_time_ms": response_time_ms,
                 "banner": (
-                    get_banner(ip, port, timeout)
+                    get_banner(
+                        ip,
+                        port,
+                        timeout,
+                    )
                     if banner
                     else "Disabled"
                 ),
             }
 
-    except (OSError, socket.timeout):
+    except (
+        OSError,
+        socket.timeout,
+    ):
         return None
 
 
@@ -136,9 +171,9 @@ def scan_port_range(
     ip,
     start_port,
     end_port,
-    timeout=0.3,
+    timeout=DEFAULT_SCAN_TIMEOUT,
     banner=False,
-    workers=100,
+    workers=DEFAULT_SCAN_WORKERS,
 ):
     if start_port > end_port:
         raise ValueError(
@@ -146,9 +181,13 @@ def scan_port_range(
         )
 
     total_ports = end_port - start_port + 1
+
     worker_count = max(
         1,
-        min(int(workers), total_ports),
+        min(
+            int(workers),
+            total_ports,
+        ),
     )
 
     results = []
@@ -165,7 +204,10 @@ def scan_port_range(
                 timeout,
                 banner,
             )
-            for port in range(start_port, end_port + 1)
+            for port in range(
+                start_port,
+                end_port + 1,
+            )
         ]
 
         for task in as_completed(tasks):
@@ -179,7 +221,8 @@ def scan_port_range(
     )
 
     duration_seconds = round(
-        time.perf_counter() - scan_start_time,
+        time.perf_counter()
+        - scan_start_time,
         2,
     )
 
@@ -220,23 +263,32 @@ def generate_txt_report(scan_result):
     ]
 
     for result in scan_result["results"]:
+        risk = result.get(
+            "risk",
+            "Informational",
+        )
+
+        risk_score = result.get(
+            "risk_score",
+            0,
+        )
+
+        recommendation = result.get(
+            "recommendation",
+            "",
+        )
+
         lines.extend(
             [
                 "",
                 f"Port: {result['port']}",
                 f"Status: {result['status']}",
                 f"Service: {result['service']}",
-                (
-                    f"Risk: "
-                    f"{result.get('risk', 'Informational')}"
-                ),
-                (
-                    f"Risk Score: "
-                    f"{result.get('risk_score', 0)}"
-                ),
+                f"Risk: {risk}",
+                f"Risk Score: {risk_score}",
                 (
                     f"Recommendation: "
-                    f"{result.get('recommendation', '')}"
+                    f"{recommendation}"
                 ),
                 (
                     f"Time: "

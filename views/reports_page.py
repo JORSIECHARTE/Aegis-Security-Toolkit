@@ -97,7 +97,3 @@ def show_reports():
         width="stretch",
         hide_index=True,
     )
-
-
-# Temporary compatibility alias
-mostrar_reportes = show_reports

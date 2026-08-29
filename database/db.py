@@ -1,13 +1,13 @@
 import sqlite3
-from pathlib import Path
+
+from config import DATABASE_PATH
 
 
-DB_PATH = Path("aegis.db")
 DATABASE_VERSION = 1
 
 
 def connect():
-    connection = sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DATABASE_PATH)
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
 
@@ -121,7 +121,7 @@ def database_uses_english_schema(connection):
 
 
 def migrate_legacy_database():
-    connection = sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DATABASE_PATH)
 
     try:
         connection.execute("PRAGMA foreign_keys = OFF")

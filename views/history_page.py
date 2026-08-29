@@ -12,7 +12,9 @@ def show_history_dashboard():
     scan_history = get_scan_history()
 
     if not scan_history:
-        st.info("No historical scan data is available.")
+        st.info(
+            "No historical scan data is available."
+        )
         return
 
     formatted_scans = [
@@ -44,7 +46,9 @@ def show_history_dashboard():
 
     st.subheader("Open Ports Over Time")
 
-    open_ports_history = get_open_ports_by_scan()
+    open_ports_history = (
+        get_open_ports_by_scan()
+    )
 
     chart_data = [
         {
@@ -69,33 +73,37 @@ def show_history_dashboard():
 
     st.subheader("Summary")
 
-    total_scans = len(formatted_scans)
+    total_scans = len(
+        formatted_scans
+    )
+
     total_open_ports = sum(
         scan["open_ports"]
         for scan in formatted_scans
     )
+
     average_open_ports = round(
         total_open_ports / total_scans,
         2,
     )
 
-    total_scans_column, total_ports_column, average_column = (
-        st.columns(3)
-    )
+    (
+        total_scans_column,
+        total_ports_column,
+        average_column,
+    ) = st.columns(3)
 
     total_scans_column.metric(
         "Total scans",
         total_scans,
     )
+
     total_ports_column.metric(
         "Total open ports detected",
         total_open_ports,
     )
+
     average_column.metric(
         "Average open ports per scan",
         average_open_ports,
     )
-
-
-# Temporary compatibility alias
-mostrar_history_dashboard = show_history_dashboard

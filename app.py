@@ -1,7 +1,13 @@
 import streamlit as st
 
+from config import (
+    APP_DESCRIPTION,
+    APP_NAME,
+    NAVIGATION_PAGES,
+    PAGE_LAYOUT,
+    PAGE_TITLE,
+)
 from database.db import initialize_database
-
 from views.dashboard_page import show_dashboard
 from views.history_page import show_history_dashboard
 from views.logs_page import show_log_analyzer
@@ -12,34 +18,19 @@ from views.scanner_page import show_port_scanner
 
 
 st.set_page_config(
-    page_title="Aegis Security Toolkit",
-    layout="wide",
+    page_title=PAGE_TITLE,
+    layout=PAGE_LAYOUT,
 )
 
 initialize_database()
 
-st.title("Aegis Security Toolkit")
+st.title(APP_NAME)
 
-st.markdown(
-    """
-    Welcome to Aegis.
-
-    An educational toolkit designed to explore and practice defensive
-    cybersecurity concepts.
-    """
-)
+st.markdown(APP_DESCRIPTION)
 
 selected_page = st.sidebar.radio(
     "Select Module",
-    [
-        "Home",
-        "Network Discovery",
-        "Port Scanner",
-        "Log Analyzer",
-        "Password Analyzer",
-        "Historical Dashboard",
-        "Reports",
-    ],
+    NAVIGATION_PAGES,
 )
 
 if selected_page == "Home":

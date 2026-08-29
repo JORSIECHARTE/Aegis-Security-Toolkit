@@ -1,7 +1,22 @@
 from collections import Counter
 
+from config import (
+    ALERT_RISK_WEIGHT,
+    BRUTE_FORCE_THRESHOLD,
+    CRITICAL_RISK_THRESHOLD,
+    FAILED_LOGIN_RISK_WEIGHT,
+    HIGH_RISK_THRESHOLD,
+    MAX_RISK_SCORE,
+    MEDIUM_RISK_THRESHOLD,
+    SUCCESS_AFTER_FAILURES_THRESHOLD,
+    SUSPICIOUS_EVENT_RISK_WEIGHT,
+)
 
-def detect_brute_force(failed_logins, threshold=5):
+
+def detect_brute_force(
+    failed_logins,
+    threshold=BRUTE_FORCE_THRESHOLD,
+):
     attempts_by_ip = Counter()
 
     for event in failed_logins:
@@ -12,7 +27,10 @@ def detect_brute_force(failed_logins, threshold=5):
 
     alerts = []
 
-    for ip_address, attempt_count in attempts_by_ip.items():
+    for (
+        ip_address,
+        attempt_count,
+    ) in attempts_by_ip.items():
         if attempt_count >= threshold:
             alerts.append(
                 {
@@ -33,7 +51,7 @@ def detect_brute_force(failed_logins, threshold=5):
 def detect_successful_login_after_failures(
     failed_logins,
     successful_logins,
-    minimum_failures=3,
+    minimum_failures=SUCCESS_AFTER_FAILURES_THRESHOLD,
 ):
     failures_by_ip = Counter()
 
@@ -47,12 +65,22 @@ def detect_successful_login_after_failures(
 
     for event in successful_logins:
         ip_address = event.get("ip")
-        failure_count = failures_by_ip.get(ip_address, 0)
 
-        if ip_address and failure_count >= minimum_failures:
+        failure_count = failures_by_ip.get(
+            ip_address,
+            0,
+        )
+
+        if (
+            ip_address
+            and failure_count >= minimum_failures
+        ):
             alerts.append(
                 {
-                    "type": "Successful login after multiple failures",
+                    "type": (
+                        "Successful login after "
+                        "multiple failures"
+                    ),
                     "ip": ip_address,
                     "count": failure_count,
                     "severity": "Medium",
@@ -68,26 +96,52 @@ def detect_successful_login_after_failures(
 
 
 def calculate_risk_score(results):
-    failed_logins = results.get("failed_logins", [])
-    suspicious_events = results.get("suspicious_events", [])
-    alerts = results.get("alerts", [])
+    failed_logins = results.get(
+        "failed_logins",
+        [],
+    )
+
+    suspicious_events = results.get(
+        "suspicious_events",
+        [],
+    )
+
+    alerts = results.get(
+        "alerts",
+        [],
+    )
 
     score = 0
-    score += len(failed_logins) * 3
-    score += len(suspicious_events) * 4
-    score += len(alerts) * 15
 
-    return min(score, 100)
+    score += (
+        len(failed_logins)
+        * FAILED_LOGIN_RISK_WEIGHT
+    )
+
+    score += (
+        len(suspicious_events)
+        * SUSPICIOUS_EVENT_RISK_WEIGHT
+    )
+
+    score += (
+        len(alerts)
+        * ALERT_RISK_WEIGHT
+    )
+
+    return min(
+        score,
+        MAX_RISK_SCORE,
+    )
 
 
 def classify_risk(score):
-    if score >= 80:
+    if score >= CRITICAL_RISK_THRESHOLD:
         return "Critical"
 
-    if score >= 60:
+    if score >= HIGH_RISK_THRESHOLD:
         return "High"
 
-    if score >= 30:
+    if score >= MEDIUM_RISK_THRESHOLD:
         return "Medium"
 
     return "Low"

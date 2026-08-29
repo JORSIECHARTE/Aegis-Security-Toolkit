@@ -1,5 +1,19 @@
 import streamlit as st
 
+from config import (
+    DEFAULT_DISCOVERY_TIMEOUT,
+    DEFAULT_DISCOVERY_WORKERS,
+    DEFAULT_END_PORT,
+    DEFAULT_NETWORK_BASE,
+    DEFAULT_START_PORT,
+    DISCOVERY_TIMEOUT_OPTIONS,
+    DISCOVERY_WORKERS_STEP,
+    HTML_REPORT_FILENAME,
+    MAX_DISCOVERY_WORKERS,
+    MAX_PORT,
+    MIN_DISCOVERY_WORKERS,
+    MIN_PORT,
+)
 from modules.network_discovery import discover_hosts
 from modules.report_generator import generate_html_scan_report
 from modules.scanner import scan_port_range
@@ -7,7 +21,9 @@ from services.risk_summary import (
     calculate_overall_risk,
     generate_executive_summary,
 )
-from services.vulnerability_rules import analyze_service_vulnerabilities
+from services.vulnerability_rules import (
+    analyze_service_vulnerabilities,
+)
 
 
 def show_network_discovery():
@@ -15,43 +31,59 @@ def show_network_discovery():
 
     st.info(
         "Discover active hosts inside your local network. "
-        "Use this module only on networks you own or are authorized to assess."
+        "Use this module only on networks you own or are authorized "
+        "to assess."
     )
 
     base_ip = st.text_input(
         "Base network",
-        value="192.168.1",
+        value=DEFAULT_NETWORK_BASE,
     )
 
     workers = st.slider(
         "Concurrent threads",
-        min_value=10,
-        max_value=200,
-        value=100,
+        min_value=MIN_DISCOVERY_WORKERS,
+        max_value=MAX_DISCOVERY_WORKERS,
+        value=DEFAULT_DISCOVERY_WORKERS,
+        step=DISCOVERY_WORKERS_STEP,
     )
 
     timeout = st.selectbox(
         "Timeout per check",
-        options=[0.2, 0.4, 0.6, 1.0],
-        index=1,
+        options=DISCOVERY_TIMEOUT_OPTIONS,
+        index=DISCOVERY_TIMEOUT_OPTIONS.index(
+            DEFAULT_DISCOVERY_TIMEOUT
+        ),
     )
 
     if st.button("Discover Hosts"):
-        with st.spinner("Searching for active hosts..."):
+        with st.spinner(
+            "Searching for active hosts..."
+        ):
             discovery_result = discover_hosts(
                 base_ip=base_ip,
                 workers=int(workers),
                 timeout=float(timeout),
             )
 
-        st.session_state["network_discovery_result"] = discovery_result
+        st.session_state[
+            "network_discovery_result"
+        ] = discovery_result
 
-    if "network_discovery_result" not in st.session_state:
+    if (
+        "network_discovery_result"
+        not in st.session_state
+    ):
         return
 
-    discovery_result = st.session_state["network_discovery_result"]
+    discovery_result = st.session_state[
+        "network_discovery_result"
+    ]
 
-    hosts_column, duration_column = st.columns(2)
+    (
+        hosts_column,
+        duration_column,
+    ) = st.columns(2)
 
     hosts_column.metric(
         "Hosts Detected",
@@ -64,11 +96,14 @@ def show_network_discovery():
     )
 
     st.write(
-        f"Ports checked: {discovery_result['ports_checked']}"
+        f"Ports checked: "
+        f"{discovery_result['ports_checked']}"
     )
 
     if not discovery_result["hosts"]:
-        st.warning("No active hosts were detected.")
+        st.warning(
+            "No active hosts were detected."
+        )
         return
 
     st.dataframe(
@@ -77,7 +112,9 @@ def show_network_discovery():
     )
 
     st.divider()
-    st.subheader("Quick Scan Selected Host")
+    st.subheader(
+        "Quick Scan Selected Host"
+    )
 
     host_options = [
         (
@@ -93,24 +130,30 @@ def show_network_discovery():
         options=host_options,
     )
 
-    selected_ip = selected_host_label.split(" | ")[0]
+    selected_ip = selected_host_label.split(
+        " | "
+    )[0]
 
-    start_column, end_column, banner_column = st.columns(3)
+    (
+        start_column,
+        end_column,
+        banner_column,
+    ) = st.columns(3)
 
     with start_column:
         start_port = st.number_input(
             "Start port",
-            min_value=1,
-            max_value=65535,
-            value=1,
+            min_value=MIN_PORT,
+            max_value=MAX_PORT,
+            value=DEFAULT_START_PORT,
         )
 
     with end_column:
         end_port = st.number_input(
             "End port",
-            min_value=1,
-            max_value=65535,
-            value=1024,
+            min_value=MIN_PORT,
+            max_value=MAX_PORT,
+            value=DEFAULT_END_PORT,
         )
 
     with banner_column:
@@ -121,11 +164,14 @@ def show_network_discovery():
     if st.button("Run Quick Scan"):
         if start_port > end_port:
             st.error(
-                "Start port cannot be greater than end port."
+                "Start port cannot be greater than "
+                "end port."
             )
             return
 
-        with st.spinner(f"Scanning {selected_ip}..."):
+        with st.spinner(
+            f"Scanning {selected_ip}..."
+        ):
             quick_scan_result = scan_port_range(
                 ip=selected_ip,
                 start_port=int(start_port),
@@ -135,18 +181,27 @@ def show_network_discovery():
                 workers=int(workers),
             )
 
-        st.session_state["network_quick_scan_result"] = (
-            quick_scan_result
-        )
+        st.session_state[
+            "network_quick_scan_result"
+        ] = quick_scan_result
 
-    if "network_quick_scan_result" not in st.session_state:
+    if (
+        "network_quick_scan_result"
+        not in st.session_state
+    ):
         return
 
-    scan_result = st.session_state["network_quick_scan_result"]
+    scan_result = st.session_state[
+        "network_quick_scan_result"
+    ]
 
     st.subheader("Quick Scan Result")
 
-    target_column, open_ports_column, duration_column = st.columns(3)
+    (
+        target_column,
+        open_ports_column,
+        duration_column,
+    ) = st.columns(3)
 
     target_column.metric(
         "Target",
@@ -167,18 +222,25 @@ def show_network_discovery():
         scan_result["results"]
     )
 
-    executive_summary = generate_executive_summary(
-        scan_result
+    executive_summary = (
+        generate_executive_summary(
+            scan_result
+        )
     )
 
-    vulnerability_findings = analyze_service_vulnerabilities(
-        scan_result["results"]
+    vulnerability_findings = (
+        analyze_service_vulnerabilities(
+            scan_result["results"]
+        )
     )
 
     st.divider()
     st.subheader("Risk Dashboard")
 
-    score_column, assessment_column = st.columns(2)
+    (
+        score_column,
+        assessment_column,
+    ) = st.columns(2)
 
     score_column.metric(
         "Overall Risk Score",
@@ -192,7 +254,10 @@ def show_network_discovery():
 
     assessment = risk_summary["assessment"]
 
-    if assessment in {"Critical", "High"}:
+    if assessment in {
+        "Critical",
+        "High",
+    }:
         st.error(executive_summary)
 
     elif assessment == "Medium":
@@ -202,21 +267,31 @@ def show_network_discovery():
         st.success(executive_summary)
 
     if risk_summary["high_risk_services"]:
-        st.subheader("High-Risk Services")
+        st.subheader(
+            "High-Risk Services"
+        )
 
         st.dataframe(
-            risk_summary["high_risk_services"],
+            risk_summary[
+                "high_risk_services"
+            ],
             width="stretch",
         )
 
     if risk_summary["recommendations"]:
         st.subheader("Recommendations")
 
-        for recommendation in risk_summary["recommendations"]:
-            st.write(f"- {recommendation}")
+        for recommendation in risk_summary[
+            "recommendations"
+        ]:
+            st.write(
+                f"- {recommendation}"
+            )
 
     st.divider()
-    st.subheader("Vulnerability Findings")
+    st.subheader(
+        "Vulnerability Findings"
+    )
 
     if vulnerability_findings:
         st.dataframe(
@@ -234,7 +309,8 @@ def show_network_discovery():
 
     if not scan_result["results"]:
         st.info(
-            "No open ports were detected in the selected range."
+            "No open ports were detected in the "
+            "selected range."
         )
         return
 
@@ -245,11 +321,13 @@ def show_network_discovery():
         width="stretch",
     )
 
-    html_report = generate_html_scan_report(scan_result)
+    html_report = generate_html_scan_report(
+        scan_result
+    )
 
     st.download_button(
         label="Download Advanced HTML Report",
         data=html_report,
-        file_name="aegis_advanced_report.html",
+        file_name=HTML_REPORT_FILENAME,
         mime="text/html",
     )

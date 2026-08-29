@@ -2,21 +2,21 @@ import socket
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from config import (
+    COMMON_DISCOVERY_PORTS,
+    DEFAULT_DISCOVERY_END_HOST,
+    DEFAULT_DISCOVERY_START_HOST,
+    DEFAULT_DISCOVERY_TIMEOUT,
+    DEFAULT_DISCOVERY_WORKERS,
+)
 from services.host_fingerprint import resolve_hostname
 
 
-COMMON_DISCOVERY_PORTS = [
-    22,
-    80,
-    443,
-    445,
-    3389,
-    8080,
-    8501,
-]
-
-
-def check_port(ip, port, timeout=0.4):
+def check_port(
+    ip,
+    port,
+    timeout=DEFAULT_DISCOVERY_TIMEOUT,
+):
     try:
         with socket.socket(
             socket.AF_INET,
@@ -37,7 +37,10 @@ def check_port(ip, port, timeout=0.4):
     return None
 
 
-def check_host(ip, timeout=0.4):
+def check_host(
+    ip,
+    timeout=DEFAULT_DISCOVERY_TIMEOUT,
+):
     for port in COMMON_DISCOVERY_PORTS:
         detected_port = check_port(
             ip=ip,
@@ -58,22 +61,30 @@ def check_host(ip, timeout=0.4):
 
 def discover_hosts(
     base_ip,
-    start=1,
-    end=254,
-    workers=100,
-    timeout=0.4,
+    start=DEFAULT_DISCOVERY_START_HOST,
+    end=DEFAULT_DISCOVERY_END_HOST,
+    workers=DEFAULT_DISCOVERY_WORKERS,
+    timeout=DEFAULT_DISCOVERY_TIMEOUT,
 ):
     discovery_start_time = time.perf_counter()
 
     hosts = []
+
     ip_addresses = [
         f"{base_ip}.{host_number}"
-        for host_number in range(start, end + 1)
+        for host_number in range(
+            start,
+            end + 1,
+        )
     ]
 
     total_hosts = len(ip_addresses)
+
     worker_count = min(
-        max(1, int(workers)),
+        max(
+            1,
+            int(workers),
+        ),
         total_hosts,
     )
 
@@ -103,7 +114,8 @@ def discover_hosts(
     )
 
     duration_seconds = round(
-        time.perf_counter() - discovery_start_time,
+        time.perf_counter()
+        - discovery_start_time,
         2,
     )
 

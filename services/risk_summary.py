@@ -1,18 +1,47 @@
+from config import (
+    SCAN_CRITICAL_RISK_THRESHOLD,
+    SCAN_HIGH_RISK_THRESHOLD,
+    SCAN_MEDIUM_RISK_THRESHOLD,
+)
+
+
 def calculate_overall_risk(scan_results):
     total_score = 0
     high_risk_services = []
     recommendations = []
 
     for item in scan_results:
-        score = item.get("risk_score", 0)
-        risk = item.get("risk", "Unknown")
-        service = item.get("service", "Unknown")
-        port = item.get("port", "Unknown")
-        recommendation = item.get("recommendation", "")
+        score = item.get(
+            "risk_score",
+            0,
+        )
+
+        risk = item.get(
+            "risk",
+            "Unknown",
+        )
+
+        service = item.get(
+            "service",
+            "Unknown",
+        )
+
+        port = item.get(
+            "port",
+            "Unknown",
+        )
+
+        recommendation = item.get(
+            "recommendation",
+            "",
+        )
 
         total_score += score
 
-        if risk in {"Critical", "High"}:
+        if risk in {
+            "Critical",
+            "High",
+        }:
             high_risk_services.append(
                 {
                     "port": port,
@@ -24,17 +53,33 @@ def calculate_overall_risk(scan_results):
 
         if (
             recommendation
-            and recommendation != "No recommendation available."
-            and recommendation not in recommendations
+            and recommendation
+            != "No recommendation available."
+            and recommendation
+            not in recommendations
         ):
-            recommendations.append(recommendation)
+            recommendations.append(
+                recommendation
+            )
 
-    if total_score >= 80:
+    if (
+        total_score
+        >= SCAN_CRITICAL_RISK_THRESHOLD
+    ):
         assessment = "Critical"
-    elif total_score >= 50:
+
+    elif (
+        total_score
+        >= SCAN_HIGH_RISK_THRESHOLD
+    ):
         assessment = "High"
-    elif total_score >= 20:
+
+    elif (
+        total_score
+        >= SCAN_MEDIUM_RISK_THRESHOLD
+    ):
         assessment = "Medium"
+
     else:
         assessment = "Low"
 
@@ -48,10 +93,18 @@ def calculate_overall_risk(scan_results):
 
 def generate_executive_summary(scan_result):
     scan_results = scan_result["results"]
-    risk_summary = calculate_overall_risk(scan_results)
 
-    open_ports = scan_result["open_ports"]
-    target = scan_result["ip"]
+    risk_summary = calculate_overall_risk(
+        scan_results
+    )
+
+    open_ports = scan_result[
+        "open_ports"
+    ]
+
+    target = scan_result[
+        "ip"
+    ]
 
     summary = (
         f"The scan against {target} detected "
@@ -62,13 +115,17 @@ def generate_executive_summary(scan_result):
         f"{risk_summary['overall_score']}."
     )
 
-    if risk_summary["high_risk_services"]:
+    if risk_summary[
+        "high_risk_services"
+    ]:
         services = ", ".join(
             (
                 f"{item['service']} "
                 f"on port {item['port']}"
             )
-            for item in risk_summary["high_risk_services"]
+            for item in risk_summary[
+                "high_risk_services"
+            ]
         )
 
         summary += (
@@ -76,7 +133,9 @@ def generate_executive_summary(scan_result):
             f"{services}."
         )
 
-    if risk_summary["recommendations"]:
+    if risk_summary[
+        "recommendations"
+    ]:
         summary += (
             " Review the recommendations before "
             "exposing this host to untrusted networks."

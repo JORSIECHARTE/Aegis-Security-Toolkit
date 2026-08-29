@@ -1,0 +1,128 @@
+from pathlib import Path
+
+
+# Application
+APP_NAME = "Aegis Security Toolkit"
+APP_VERSION = "0.1.0"
+
+APP_DESCRIPTION = """
+Welcome to Aegis.
+
+An educational toolkit designed to explore and practice defensive
+cybersecurity concepts.
+"""
+
+
+# Streamlit
+PAGE_TITLE = APP_NAME
+PAGE_LAYOUT = "wide"
+
+
+# Navigation
+NAVIGATION_PAGES = [
+    "Home",
+    "Network Discovery",
+    "Port Scanner",
+    "Log Analyzer",
+    "Password Analyzer",
+    "Historical Dashboard",
+    "Reports",
+]
+
+
+# Database
+DATABASE_PATH = Path("aegis.db")
+
+
+# Reports
+TXT_REPORT_FILENAME = "aegis_scan_report.txt"
+CSV_REPORT_FILENAME = "aegis_scan_report.csv"
+HTML_REPORT_FILENAME = "aegis_advanced_report.html"
+
+
+# Port Scanner
+DEFAULT_SCAN_TARGET = "127.0.0.1"
+
+MIN_PORT = 1
+MAX_PORT = 65535
+
+DEFAULT_START_PORT = 1
+DEFAULT_END_PORT = 1024
+
+SCAN_TIMEOUT_OPTIONS = [
+    0.3,
+    0.5,
+    1.0,
+    2.0,
+]
+
+DEFAULT_SCAN_TIMEOUT = 0.3
+
+MIN_SCAN_WORKERS = 10
+MAX_SCAN_WORKERS = 200
+DEFAULT_SCAN_WORKERS = 100
+SCAN_WORKERS_STEP = 10
+
+DEFAULT_BANNER_TIMEOUT = 1.0
+BANNER_RECEIVE_SIZE = 1024
+
+
+# Network Discovery
+DEFAULT_NETWORK_BASE = "192.168.1"
+
+COMMON_DISCOVERY_PORTS = [
+    22,
+    80,
+    443,
+    445,
+    3389,
+    8080,
+    8501,
+]
+
+DEFAULT_DISCOVERY_START_HOST = 1
+DEFAULT_DISCOVERY_END_HOST = 254
+
+DISCOVERY_TIMEOUT_OPTIONS = [
+    0.2,
+    0.4,
+    0.6,
+    1.0,
+]
+
+DEFAULT_DISCOVERY_TIMEOUT = 0.4
+
+MIN_DISCOVERY_WORKERS = 10
+MAX_DISCOVERY_WORKERS = 200
+DEFAULT_DISCOVERY_WORKERS = 100
+DISCOVERY_WORKERS_STEP = 10
+
+
+# Log Analyzer
+BRUTE_FORCE_THRESHOLD = 5
+SUCCESS_AFTER_FAILURES_THRESHOLD = 3
+
+FAILED_LOGIN_RISK_WEIGHT = 3
+SUSPICIOUS_EVENT_RISK_WEIGHT = 4
+ALERT_RISK_WEIGHT = 15
+
+CRITICAL_RISK_THRESHOLD = 80
+HIGH_RISK_THRESHOLD = 60
+MEDIUM_RISK_THRESHOLD = 30
+MAX_RISK_SCORE = 100
+
+
+# Password Analyzer
+RECOMMENDED_PASSWORD_LENGTH = 14
+STRONG_PASSWORD_LENGTH = 18
+
+PASSWORD_GUESSES_PER_SECOND = 1_000_000_000
+
+WEAK_PASSWORD_MAX_SCORE = 2
+MODERATE_PASSWORD_MAX_SCORE = 6
+
+
+# Port Scan Risk Summary
+SCAN_CRITICAL_RISK_THRESHOLD = 80
+SCAN_HIGH_RISK_THRESHOLD = 50
+SCAN_MEDIUM_RISK_THRESHOLD = 20

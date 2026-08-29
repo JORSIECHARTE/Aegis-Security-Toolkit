@@ -1,18 +1,6 @@
 import streamlit as st
 
-from modules.log_analyzer import analizar_logs as analyze_logs
-
-
-RISK_LEVEL_TRANSLATIONS = {
-    "Crítico": "Critical",
-    "Alto": "High",
-    "Medio": "Medium",
-    "Bajo": "Low",
-    "Critical": "Critical",
-    "High": "High",
-    "Medium": "Medium",
-    "Low": "Low",
-}
+from modules.log_analyzer import analyze_logs
 
 
 def show_log_analyzer():
@@ -40,54 +28,57 @@ def show_log_analyzer():
 
     summary = result.get(
         "summary",
-        result.get("resumen", {}),
+        {},
     )
 
     total_lines = result.get(
         "total_lines",
-        result.get("total_lineas", 0),
+        0,
     )
+
     failed_attempts = summary.get(
         "failed_attempts",
-        summary.get("intentos_fallidos", 0),
+        0,
     )
+
     alert_count = summary.get(
         "alerts",
-        summary.get("alertas", 0),
+        0,
     )
+
     risk_score = summary.get(
         "risk_score",
         0,
     )
+
     risk_level = summary.get(
         "risk_level",
-        summary.get("nivel_riesgo", "Low"),
+        "Low",
     )
 
     alerts = result.get(
         "alerts",
-        result.get("alertas", []),
+        [],
     )
+
     frequent_ips = result.get(
         "frequent_ips",
-        result.get("ips_frecuentes", []),
+        [],
     )
+
     suspicious_events = result.get(
         "suspicious_events",
-        result.get("eventos_sospechosos", []),
+        [],
     )
+
     failed_logins = result.get(
         "failed_logins",
         [],
     )
+
     successful_logins = result.get(
         "successful_logins",
         [],
-    )
-
-    displayed_risk_level = RISK_LEVEL_TRANSLATIONS.get(
-        risk_level,
-        risk_level,
     )
 
     st.subheader("Security Summary")
@@ -103,27 +94,41 @@ def show_log_analyzer():
         "Lines analyzed",
         total_lines,
     )
+
     failed_column.metric(
         "Failed attempts",
         failed_attempts,
     )
+
     alerts_column.metric(
         "Alerts",
         alert_count,
     )
+
     risk_column.metric(
         "Risk score",
         f"{risk_score}/100",
     )
 
-    if displayed_risk_level == "Critical":
-        st.error(f"Risk level: {displayed_risk_level}")
-    elif displayed_risk_level == "High":
-        st.warning(f"Risk level: {displayed_risk_level}")
-    elif displayed_risk_level == "Medium":
-        st.info(f"Risk level: {displayed_risk_level}")
+    if risk_level == "Critical":
+        st.error(
+            f"Risk level: {risk_level}"
+        )
+
+    elif risk_level == "High":
+        st.warning(
+            f"Risk level: {risk_level}"
+        )
+
+    elif risk_level == "Medium":
+        st.info(
+            f"Risk level: {risk_level}"
+        )
+
     else:
-        st.success(f"Risk level: {displayed_risk_level}")
+        st.success(
+            f"Risk level: {risk_level}"
+        )
 
     st.divider()
 
@@ -135,15 +140,20 @@ def show_log_analyzer():
             width="stretch",
             hide_index=True,
         )
+
     else:
-        st.success("No advanced alerts were detected.")
+        st.success(
+            "No advanced alerts were detected."
+        )
 
     st.divider()
 
     ip_column, events_column = st.columns(2)
 
     with ip_column:
-        st.subheader("Detected IP Addresses")
+        st.subheader(
+            "Detected IP Addresses"
+        )
 
         if frequent_ips:
             st.dataframe(
@@ -151,11 +161,16 @@ def show_log_analyzer():
                 width="stretch",
                 hide_index=True,
             )
+
         else:
-            st.info("No IP addresses were detected.")
+            st.info(
+                "No IP addresses were detected."
+            )
 
     with events_column:
-        st.subheader("Suspicious Events")
+        st.subheader(
+            "Suspicious Events"
+        )
 
         if suspicious_events:
             st.dataframe(
@@ -163,8 +178,11 @@ def show_log_analyzer():
                 width="stretch",
                 hide_index=True,
             )
+
         else:
-            st.success("No suspicious events were detected.")
+            st.success(
+                "No suspicious events were detected."
+            )
 
     st.divider()
 
@@ -176,8 +194,11 @@ def show_log_analyzer():
             width="stretch",
             hide_index=True,
         )
+
     else:
-        st.success("No failed login attempts were detected.")
+        st.success(
+            "No failed login attempts were detected."
+        )
 
     st.subheader("Successful Logins")
 
@@ -187,9 +208,8 @@ def show_log_analyzer():
             width="stretch",
             hide_index=True,
         )
+
     else:
-        st.info("No successful logins were detected.")
-
-
-# Temporary compatibility alias
-mostrar_log_analyzer = show_log_analyzer
+        st.info(
+            "No successful logins were detected."
+        )
