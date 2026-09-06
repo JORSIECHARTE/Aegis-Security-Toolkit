@@ -12,6 +12,10 @@ from config import (
     DEFAULT_SCAN_WORKERS,
 )
 from services.service_risk import get_service_risk
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 COMMON_SERVICES = {
@@ -49,6 +53,7 @@ def get_service_name(port):
 
     try:
         return socket.getservbyport(port, "tcp").upper()
+
     except OSError:
         return "Unknown"
 
@@ -93,13 +98,26 @@ def get_banner(
                 )
 
             except socket.timeout:
+                logger.debug(
+                    "Banner request timed out for %s:%s.",
+                    ip,
+                    port,
+                )
+
                 return "No banner response"
 
     except (
         ConnectionError,
         OSError,
         socket.timeout,
-    ):
+    ) as error:
+        logger.debug(
+            "Banner grabbing failed for %s:%s: %s",
+            ip,
+            port,
+            error,
+        )
+
         return "Not available"
 
 
@@ -139,6 +157,13 @@ def scan_port(
                 service_name
             )
 
+            logger.debug(
+                "Open port detected: %s:%s (%s).",
+                ip,
+                port,
+                service_name,
+            )
+
             return {
                 "port": port,
                 "status": "Open",
@@ -163,7 +188,14 @@ def scan_port(
     except (
         OSError,
         socket.timeout,
-    ):
+    ) as error:
+        logger.debug(
+            "Port scan failed for %s:%s: %s",
+            ip,
+            port,
+            error,
+        )
+
         return None
 
 
@@ -176,6 +208,12 @@ def scan_port_range(
     workers=DEFAULT_SCAN_WORKERS,
 ):
     if start_port > end_port:
+        logger.warning(
+            "Invalid scan range requested: %s-%s.",
+            start_port,
+            end_port,
+        )
+
         raise ValueError(
             "Start port cannot be greater than end port."
         )
@@ -188,6 +226,21 @@ def scan_port_range(
             int(workers),
             total_ports,
         ),
+    )
+
+    logger.info(
+        (
+            "Starting port scan against %s. "
+            "Range=%s-%s, ports=%s, workers=%s, "
+            "timeout=%ss, banner=%s."
+        ),
+        ip,
+        start_port,
+        end_port,
+        total_ports,
+        worker_count,
+        timeout,
+        banner,
     )
 
     results = []
@@ -228,6 +281,16 @@ def scan_port_range(
 
     scan_date = datetime.now().strftime(
         "%Y-%m-%d %H:%M:%S"
+    )
+
+    logger.info(
+        (
+            "Port scan completed against %s. "
+            "Open ports=%s, duration=%ss."
+        ),
+        ip,
+        len(results),
+        duration_seconds,
     )
 
     return {

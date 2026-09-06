@@ -10,6 +10,10 @@ from config import (
     DEFAULT_DISCOVERY_WORKERS,
 )
 from services.host_fingerprint import resolve_hostname
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def check_port(
@@ -29,10 +33,20 @@ def check_port(
             )
 
             if result == 0:
+                logger.debug(
+                    "Open discovery port detected: %s:%s.",
+                    ip,
+                    port,
+                )
                 return port
 
-    except Exception:
-        pass
+    except Exception as error:
+        logger.debug(
+            "Discovery port check failed for %s:%s: %s",
+            ip,
+            port,
+            error,
+        )
 
     return None
 
@@ -49,9 +63,18 @@ def check_host(
         )
 
         if detected_port is not None:
+            hostname = resolve_hostname(ip)
+
+            logger.debug(
+                "Active host detected: %s (%s), port=%s.",
+                ip,
+                hostname,
+                detected_port,
+            )
+
             return {
                 "ip": ip,
-                "hostname": resolve_hostname(ip),
+                "hostname": hostname,
                 "status": "Active",
                 "detected_port": detected_port,
             }
@@ -67,8 +90,6 @@ def discover_hosts(
     timeout=DEFAULT_DISCOVERY_TIMEOUT,
 ):
     discovery_start_time = time.perf_counter()
-
-    hosts = []
 
     ip_addresses = [
         f"{base_ip}.{host_number}"
@@ -87,6 +108,21 @@ def discover_hosts(
         ),
         total_hosts,
     )
+
+    logger.info(
+        (
+            "Starting network discovery on %s.%s-%s. "
+            "Hosts=%s, workers=%s, timeout=%ss."
+        ),
+        base_ip,
+        start,
+        end,
+        total_hosts,
+        worker_count,
+        timeout,
+    )
+
+    hosts = []
 
     with ThreadPoolExecutor(
         max_workers=worker_count
@@ -117,6 +153,18 @@ def discover_hosts(
         time.perf_counter()
         - discovery_start_time,
         2,
+    )
+
+    logger.info(
+        (
+            "Network discovery completed on %s.%s-%s. "
+            "Active hosts=%s, duration=%ss."
+        ),
+        base_ip,
+        start,
+        end,
+        len(hosts),
+        duration_seconds,
     )
 
     return {

@@ -8,6 +8,10 @@ from config import (
     STRONG_PASSWORD_LENGTH,
     WEAK_PASSWORD_MAX_SCORE,
 )
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 COMMON_WORDS = [
@@ -195,6 +199,11 @@ def remove_duplicates(items):
 
 
 def analyze_password(password):
+    logger.info(
+        "Starting password analysis. Length=%s.",
+        len(password),
+    )
+
     score = 0
     observations = []
     recommendations = []
@@ -406,6 +415,19 @@ def analyze_password(password):
 
     recommendations = remove_duplicates(
         recommendations
+    )
+
+    logger.info(
+        (
+            "Password analysis completed. "
+            "Length=%s, level=%s, score=%s, "
+            "observations=%s, recommendations=%s."
+        ),
+        len(password),
+        level,
+        score,
+        len(observations),
+        len(recommendations),
     )
 
     return {

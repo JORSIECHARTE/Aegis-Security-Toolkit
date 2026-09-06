@@ -8,6 +8,7 @@ from config import (
     PAGE_TITLE,
 )
 from database.db import initialize_database
+from utils.logger import configure_logging
 from views.dashboard_page import show_dashboard
 from views.history_page import show_history_dashboard
 from views.logs_page import show_log_analyzer
@@ -17,12 +18,17 @@ from views.reports_page import show_reports
 from views.scanner_page import show_port_scanner
 
 
+logger = configure_logging()
+
+
 st.set_page_config(
     page_title=PAGE_TITLE,
     layout=PAGE_LAYOUT,
 )
 
 initialize_database()
+
+logger.info("Application started.")
 
 st.title(APP_NAME)
 

@@ -8,6 +8,10 @@ from services.security_rules import (
     detect_brute_force,
     detect_successful_login_after_failures,
 )
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 IP_PATTERN = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
@@ -54,6 +58,11 @@ def contains_any_pattern(text, patterns):
 
 def analyze_logs(content):
     lines = content.splitlines()
+
+    logger.info(
+        "Starting log analysis. Lines=%s.",
+        len(lines),
+    )
 
     failed_logins = []
     successful_logins = []
@@ -162,6 +171,22 @@ def analyze_logs(content):
         "risk_score": risk_score,
         "risk_level": risk_level,
     }
+
+    logger.info(
+        (
+            "Log analysis completed. "
+            "Failed logins=%s, successful logins=%s, "
+            "suspicious events=%s, unique IPs=%s, "
+            "alerts=%s, risk=%s (%s)."
+        ),
+        len(failed_logins),
+        len(successful_logins),
+        len(suspicious_events),
+        len(ip_counter),
+        len(alerts),
+        risk_level,
+        risk_score,
+    )
 
     return {
         "total_lines": len(lines),

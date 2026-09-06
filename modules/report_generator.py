@@ -4,6 +4,10 @@ from services.risk_summary import (
     calculate_overall_risk,
     generate_executive_summary,
 )
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def get_risk_class(risk):
@@ -32,6 +36,15 @@ def format_html_value(value):
 
 def generate_html_scan_report(scan_result):
     results = scan_result["results"]
+
+    logger.info(
+        (
+            "Generating HTML scan report. "
+            "Target=%s, open ports=%s."
+        ),
+        scan_result["ip"],
+        scan_result["open_ports"],
+    )
 
     risk_summary = calculate_overall_risk(results)
     executive_summary = generate_executive_summary(scan_result)
@@ -429,5 +442,21 @@ def generate_html_scan_report(scan_result):
 </body>
 </html>
 """
+
+    logger.info(
+        (
+            "HTML scan report generated successfully. "
+            "Target=%s, risk=%s (%s)."
+        ),
+        target,
+        risk_summary.get(
+            "assessment",
+            "Unknown",
+        ),
+        risk_summary.get(
+            "overall_score",
+            0,
+        ),
+    )
 
     return html_report

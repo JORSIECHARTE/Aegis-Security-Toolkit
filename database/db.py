@@ -1,6 +1,10 @@
 import sqlite3
 
 from config import DATABASE_PATH
+from utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 DATABASE_VERSION = 1
@@ -117,15 +121,28 @@ def database_uses_english_schema(connection):
         "duration_seconds",
     }
 
-    return required_columns.issubset(scan_columns)
+    return required_columns.issubset(
+        scan_columns
+    )
 
 
 def migrate_legacy_database():
-    connection = sqlite3.connect(DATABASE_PATH)
+    logger.info(
+        "Starting legacy database migration."
+    )
+
+    connection = sqlite3.connect(
+        DATABASE_PATH
+    )
 
     try:
-        connection.execute("PRAGMA foreign_keys = OFF")
-        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "PRAGMA foreign_keys = OFF"
+        )
+
+        connection.execute(
+            "BEGIN IMMEDIATE"
+        )
 
         legacy_scans_exist = table_exists(
             connection,
@@ -229,53 +246,115 @@ def migrate_legacy_database():
 
     except sqlite3.Error:
         connection.rollback()
+
+        logger.exception(
+            "Legacy database migration failed."
+        )
+
         raise
 
     finally:
         connection.close()
 
     with connect() as verification_connection:
-        foreign_key_errors = verification_connection.execute(
-            "PRAGMA foreign_key_check"
-        ).fetchall()
+        foreign_key_errors = (
+            verification_connection.execute(
+                "PRAGMA foreign_key_check"
+            ).fetchall()
+        )
 
         if foreign_key_errors:
-            raise RuntimeError(
-                "The database migration completed, but foreign-key "
-                "validation detected inconsistencies."
+            logger.error(
+                (
+                    "Database migration completed "
+                    "with foreign-key inconsistencies."
+                )
             )
+
+            raise RuntimeError(
+                "The database migration completed, "
+                "but foreign-key validation detected "
+                "inconsistencies."
+            )
+
+    logger.info(
+        "Legacy database migration completed successfully."
+    )
 
 
 def initialize_database():
+    logger.info(
+        "Initializing database."
+    )
+
     with connect() as connection:
-        legacy_schema = database_uses_legacy_schema(
-            connection
+        legacy_schema = (
+            database_uses_legacy_schema(
+                connection
+            )
         )
 
-        english_schema = database_uses_english_schema(
-            connection
+        english_schema = (
+            database_uses_english_schema(
+                connection
+            )
         )
 
     if legacy_schema:
+        logger.info(
+            "Legacy database schema detected."
+        )
+
         migrate_legacy_database()
         return
 
     if english_schema:
         with connect() as connection:
-            create_english_schema(connection)
-            connection.execute(
-                f"PRAGMA user_version = {DATABASE_VERSION}"
+            create_english_schema(
+                connection
             )
+
+            connection.execute(
+                f"PRAGMA user_version = "
+                f"{DATABASE_VERSION}"
+            )
+
+        logger.info(
+            "Database initialized with existing English schema."
+        )
+
         return
 
+    logger.info(
+        "No compatible database schema detected. "
+        "Creating database schema."
+    )
+
     with connect() as connection:
-        create_english_schema(connection)
-        connection.execute(
-            f"PRAGMA user_version = {DATABASE_VERSION}"
+        create_english_schema(
+            connection
         )
+
+        connection.execute(
+            f"PRAGMA user_version = "
+            f"{DATABASE_VERSION}"
+        )
+
+    logger.info(
+        "Database schema created successfully."
+    )
 
 
 def save_scan(scan_result):
+    logger.info(
+        (
+            "Saving scan result. "
+            "Target=%s, open ports=%s."
+        ),
+        scan_result["ip"],
+        scan_result["open_ports"],
+    )
+
     with connect() as connection:
         cursor = connection.cursor()
 
@@ -324,9 +403,21 @@ def save_scan(scan_result):
                     result["status"],
                     result["service"],
                     result["response_time_ms"],
-                    result.get("banner", ""),
+                    result.get(
+                        "banner",
+                        "",
+                    ),
                 ),
             )
+
+    logger.info(
+        (
+            "Scan saved successfully. "
+            "ID=%s, results=%s."
+        ),
+        scan_id,
+        len(scan_result["results"]),
+    )
 
     return scan_id
 
