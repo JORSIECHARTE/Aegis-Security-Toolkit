@@ -29,34 +29,97 @@ from services.vulnerability_rules import (
 def show_network_discovery():
     st.header("Network Discovery")
 
+    interface_mode = st.session_state.get(
+        "interface_mode",
+        "Standard",
+    )
+
     st.info(
         "Discover active hosts inside your local network. "
         "Use this module only on networks you own or are authorized "
         "to assess."
     )
 
+    if interface_mode == "Standard":
+        st.caption(
+            "Aegis uses recommended discovery settings automatically. "
+            "Enter the base network and start the discovery."
+        )
+
+    else:
+        st.caption(
+            "Advanced Mode provides direct control over discovery "
+            "timeout and concurrency."
+        )
+
     base_ip = st.text_input(
         "Base network",
         value=DEFAULT_NETWORK_BASE,
-    )
-
-    workers = st.slider(
-        "Concurrent threads",
-        min_value=MIN_DISCOVERY_WORKERS,
-        max_value=MAX_DISCOVERY_WORKERS,
-        value=DEFAULT_DISCOVERY_WORKERS,
-        step=DISCOVERY_WORKERS_STEP,
-    )
-
-    timeout = st.selectbox(
-        "Timeout per check",
-        options=DISCOVERY_TIMEOUT_OPTIONS,
-        index=DISCOVERY_TIMEOUT_OPTIONS.index(
-            DEFAULT_DISCOVERY_TIMEOUT
+        help=(
+            "Enter the first three octets of an IPv4 network, "
+            "for example 192.168.1."
         ),
     )
 
-    if st.button("Discover Hosts"):
+    if interface_mode == "Standard":
+        workers = DEFAULT_DISCOVERY_WORKERS
+        timeout = DEFAULT_DISCOVERY_TIMEOUT
+
+        (
+            range_column,
+            timeout_column,
+            workers_column,
+        ) = st.columns(3)
+
+        range_column.metric(
+            "Discovery Range",
+            f"{base_ip}.1 - {base_ip}.254",
+        )
+
+        timeout_column.metric(
+            "Timeout",
+            f"{timeout} s",
+        )
+
+        workers_column.metric(
+            "Concurrent Threads",
+            workers,
+        )
+
+        with st.expander("How does host discovery work?"):
+            st.write(
+                "Aegis checks selected network services across the "
+                "target network. A host that responds on one of these "
+                "services is considered active."
+            )
+
+    else:
+        workers = st.slider(
+            "Concurrent threads",
+            min_value=MIN_DISCOVERY_WORKERS,
+            max_value=MAX_DISCOVERY_WORKERS,
+            value=DEFAULT_DISCOVERY_WORKERS,
+            step=DISCOVERY_WORKERS_STEP,
+        )
+
+        timeout = st.selectbox(
+            "Timeout per check",
+            options=DISCOVERY_TIMEOUT_OPTIONS,
+            index=DISCOVERY_TIMEOUT_OPTIONS.index(
+                DEFAULT_DISCOVERY_TIMEOUT
+            ),
+        )
+
+    if st.button(
+        "Discover Hosts",
+        type="primary",
+    ):
+        if not base_ip.strip():
+            st.error(
+                "Enter a base network."
+            )
+            return
+
         with st.spinner(
             "Searching for active hosts..."
         ):
@@ -70,6 +133,11 @@ def show_network_discovery():
             "network_discovery_result"
         ] = discovery_result
 
+        st.session_state.pop(
+            "network_quick_scan_result",
+            None,
+        )
+
     if (
         "network_discovery_result"
         not in st.session_state
@@ -79,6 +147,8 @@ def show_network_discovery():
     discovery_result = st.session_state[
         "network_discovery_result"
     ]
+
+    st.subheader("Discovery Summary")
 
     (
         hosts_column,
@@ -100,11 +170,20 @@ def show_network_discovery():
         f"{discovery_result['ports_checked']}"
     )
 
+    if interface_mode == "Standard":
+        st.caption(
+            "A detected host responded on at least one of the "
+            "network services checked by Aegis. Hosts that do not "
+            "respond may still be online."
+        )
+
     if not discovery_result["hosts"]:
         st.warning(
             "No active hosts were detected."
         )
         return
+
+    st.subheader("Discovered Hosts")
 
     st.dataframe(
         discovery_result["hosts"],
@@ -112,8 +191,9 @@ def show_network_discovery():
     )
 
     st.divider()
+
     st.subheader(
-        "Quick Scan Selected Host"
+        "Scan Selected Host"
     )
 
     host_options = [
@@ -134,34 +214,87 @@ def show_network_discovery():
         " | "
     )[0]
 
-    (
-        start_column,
-        end_column,
-        banner_column,
-    ) = st.columns(3)
-
-    with start_column:
-        start_port = st.number_input(
-            "Start port",
-            min_value=MIN_PORT,
-            max_value=MAX_PORT,
-            value=DEFAULT_START_PORT,
+    if interface_mode == "Standard":
+        scan_profile = st.selectbox(
+            "Scan Profile",
+            [
+                "Quick Scan",
+                "Common Services",
+                "Extended Scan",
+            ],
+            key="network_scan_profile",
         )
 
-    with end_column:
-        end_port = st.number_input(
-            "End port",
-            min_value=MIN_PORT,
-            max_value=MAX_PORT,
-            value=DEFAULT_END_PORT,
+        if scan_profile == "Quick Scan":
+            start_port = 1
+            end_port = 1024
+
+        elif scan_profile == "Common Services":
+            start_port = 1
+            end_port = 5000
+
+        else:
+            start_port = 1
+            end_port = 10000
+
+        (
+            target_column,
+            range_column,
+        ) = st.columns(2)
+
+        target_column.metric(
+            "Selected Target",
+            selected_ip,
         )
 
-    with banner_column:
-        banner_enabled = st.checkbox(
-            "Enable banner grabbing"
+        range_column.metric(
+            "Port Range",
+            f"{start_port}-{end_port}",
         )
 
-    if st.button("Run Quick Scan"):
+    else:
+        (
+            start_column,
+            end_column,
+        ) = st.columns(2)
+
+        with start_column:
+            start_port = st.number_input(
+                "Start port",
+                min_value=MIN_PORT,
+                max_value=MAX_PORT,
+                value=DEFAULT_START_PORT,
+            )
+
+        with end_column:
+            end_port = st.number_input(
+                "End port",
+                min_value=MIN_PORT,
+                max_value=MAX_PORT,
+                value=DEFAULT_END_PORT,
+            )
+
+    banner_enabled = st.checkbox(
+        "Enable banner grabbing",
+        key="network_banner_grabbing",
+        help=(
+            "Attempts to retrieve information exposed by services "
+            "running on open ports."
+        ),
+    )
+
+    if interface_mode == "Standard":
+        with st.expander("What is banner grabbing?"):
+            st.write(
+                "Banner grabbing attempts to collect information "
+                "returned by a network service. This can help identify "
+                "the software or service running on an open port."
+            )
+
+    if st.button(
+        "Run Host Scan",
+        type="primary",
+    ):
         if start_port > end_port:
             st.error(
                 "Start port cannot be greater than "
@@ -195,7 +328,7 @@ def show_network_discovery():
         "network_quick_scan_result"
     ]
 
-    st.subheader("Quick Scan Result")
+    st.subheader("Host Scan Result")
 
     (
         target_column,
@@ -235,6 +368,7 @@ def show_network_discovery():
     )
 
     st.divider()
+
     st.subheader("Risk Dashboard")
 
     (
@@ -251,6 +385,13 @@ def show_network_discovery():
         "Assessment",
         risk_summary["assessment"],
     )
+
+    if interface_mode == "Standard":
+        st.caption(
+            "The risk score summarizes the exposure identified "
+            "during the scan. It does not by itself confirm that "
+            "the target is vulnerable."
+        )
 
     assessment = risk_summary["assessment"]
 
@@ -289,9 +430,18 @@ def show_network_discovery():
             )
 
     st.divider()
+
     st.subheader(
         "Vulnerability Findings"
     )
+
+    if interface_mode == "Standard":
+        st.caption(
+            "Findings are based on the evidence collected by "
+            "Aegis and its current detection rules. They should "
+            "be validated before being treated as confirmed "
+            "vulnerabilities."
+        )
 
     if vulnerability_findings:
         st.dataframe(
@@ -315,6 +465,13 @@ def show_network_discovery():
         return
 
     st.subheader("Open Ports")
+
+    if interface_mode == "Standard":
+        st.caption(
+            "An open port indicates that a network service is "
+            "accepting connections. An open port alone does not "
+            "mean that the service is vulnerable."
+        )
 
     st.dataframe(
         scan_result["results"],

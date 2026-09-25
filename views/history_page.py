@@ -7,7 +7,24 @@ from database.db import (
 
 
 def show_history_dashboard():
-    st.header("Historical Dashboard")
+    st.header("Scan History")
+
+    interface_mode = st.session_state.get(
+        "interface_mode",
+        "Standard",
+    )
+
+    if interface_mode == "Standard":
+        st.caption(
+            "Review previous scans and observe how detected "
+            "network exposure changes over time."
+        )
+
+    else:
+        st.caption(
+            "Review stored scan records and historical "
+            "open-port activity."
+        )
 
     scan_history = get_scan_history()
 
@@ -17,30 +34,61 @@ def show_history_dashboard():
         )
         return
 
-    formatted_scans = [
-        {
-            "scan_id": scan_id,
-            "date": scan_date,
-            "target": ip_address,
-            "open_ports": open_ports,
-            "duration_seconds": duration_seconds,
-        }
-        for (
-            scan_id,
-            scan_date,
-            ip_address,
-            open_ports,
-            duration_seconds,
-        ) in scan_history
-    ]
+    # ---------------------------------------------------------
+    # Scan history
+    # ---------------------------------------------------------
 
-    st.subheader("Scan History")
+    if interface_mode == "Standard":
+        formatted_scans = [
+            {
+                "date": scan_date,
+                "target": ip_address,
+                "open_ports": open_ports,
+            }
+            for (
+                scan_id,
+                scan_date,
+                ip_address,
+                open_ports,
+                duration_seconds,
+            ) in scan_history
+        ]
+
+    else:
+        formatted_scans = [
+            {
+                "scan_id": scan_id,
+                "date": scan_date,
+                "target": ip_address,
+                "open_ports": open_ports,
+                "duration_seconds": duration_seconds,
+            }
+            for (
+                scan_id,
+                scan_date,
+                ip_address,
+                open_ports,
+                duration_seconds,
+            ) in scan_history
+        ]
+
+    st.subheader("Previous Scans")
 
     st.dataframe(
         formatted_scans,
         width="stretch",
         hide_index=True,
     )
+
+    if interface_mode == "Standard":
+        st.caption(
+            "Each entry represents a completed port scan "
+            "stored in the Aegis database."
+        )
+
+    # ---------------------------------------------------------
+    # Historical activity
+    # ---------------------------------------------------------
 
     st.divider()
 
@@ -69,17 +117,43 @@ def show_history_dashboard():
         y="open_ports",
     )
 
+    if interface_mode == "Standard":
+        st.caption(
+            "This chart shows the number of open ports detected "
+            "during each stored scan. Changes can indicate that "
+            "services were added, removed, enabled, or disabled."
+        )
+
+        with st.expander(
+            "How should I interpret changes?"
+        ):
+            st.write(
+                "An increase in open ports does not automatically "
+                "mean that security became worse, and a decrease "
+                "does not automatically mean that security improved."
+            )
+
+            st.write(
+                "Changes should be investigated together with the "
+                "target, detected services, configuration changes, "
+                "and other available evidence."
+            )
+
+    # ---------------------------------------------------------
+    # Summary
+    # ---------------------------------------------------------
+
     st.divider()
 
-    st.subheader("Summary")
+    st.subheader("Historical Summary")
 
     total_scans = len(
-        formatted_scans
+        scan_history
     )
 
     total_open_ports = sum(
-        scan["open_ports"]
-        for scan in formatted_scans
+        scan[3]
+        for scan in scan_history
     )
 
     average_open_ports = round(
@@ -94,16 +168,23 @@ def show_history_dashboard():
     ) = st.columns(3)
 
     total_scans_column.metric(
-        "Total scans",
+        "Total Scans",
         total_scans,
     )
 
     total_ports_column.metric(
-        "Total open ports detected",
+        "Open Port Detections",
         total_open_ports,
     )
 
     average_column.metric(
-        "Average open ports per scan",
+        "Average Open Ports per Scan",
         average_open_ports,
     )
+
+    if interface_mode == "Standard":
+        st.caption(
+            "Open Port Detections is cumulative across scans. "
+            "The same port detected during multiple scans is "
+            "counted multiple times."
+        )

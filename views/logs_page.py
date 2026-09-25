@@ -6,10 +6,35 @@ from modules.log_analyzer import analyze_logs
 def show_log_analyzer():
     st.header("Log Analyzer")
 
-    st.info(
-        "Upload a .log or .txt file to detect basic and advanced "
-        "security events."
+    interface_mode = st.session_state.get(
+        "interface_mode",
+        "Standard",
     )
+
+    st.info(
+        "Upload a .log or .txt file to identify security events, "
+        "authentication activity, suspicious patterns, and alerts."
+    )
+
+    if interface_mode == "Standard":
+        st.caption(
+            "Aegis analyzes the log automatically and highlights "
+            "the most relevant security information."
+        )
+
+        with st.expander("What does the Log Analyzer look for?"):
+            st.write(
+                "Aegis searches for authentication failures, "
+                "successful logins, suspicious events, recurring "
+                "IP addresses, and patterns that may indicate "
+                "security-relevant activity."
+            )
+
+    else:
+        st.caption(
+            "Advanced Mode displays the complete set of events "
+            "and technical information extracted from the log."
+        )
 
     uploaded_file = st.file_uploader(
         "Select a log file",
@@ -24,7 +49,14 @@ def show_log_analyzer():
         errors="ignore",
     )
 
-    result = analyze_logs(file_content)
+    if not file_content.strip():
+        st.warning(
+            "The uploaded file is empty or contains no readable text."
+        )
+        return
+
+    with st.spinner("Analyzing log..."):
+        result = analyze_logs(file_content)
 
     summary = result.get(
         "summary",
@@ -81,6 +113,10 @@ def show_log_analyzer():
         [],
     )
 
+    # ---------------------------------------------------------
+    # Security summary
+    # ---------------------------------------------------------
+
     st.subheader("Security Summary")
 
     (
@@ -91,12 +127,12 @@ def show_log_analyzer():
     ) = st.columns(4)
 
     lines_column.metric(
-        "Lines analyzed",
+        "Lines Analyzed",
         total_lines,
     )
 
     failed_column.metric(
-        "Failed attempts",
+        "Failed Attempts",
         failed_attempts,
     )
 
@@ -106,9 +142,16 @@ def show_log_analyzer():
     )
 
     risk_column.metric(
-        "Risk score",
+        "Risk Score",
         f"{risk_score}/100",
     )
+
+    if interface_mode == "Standard":
+        st.caption(
+            "The risk score summarizes the security-relevant "
+            "activity detected in this log. A high score indicates "
+            "that the events should receive closer investigation."
+        )
 
     if risk_level == "Critical":
         st.error(
@@ -130,9 +173,19 @@ def show_log_analyzer():
             f"Risk level: {risk_level}"
         )
 
+    # ---------------------------------------------------------
+    # Alerts
+    # ---------------------------------------------------------
+
     st.divider()
 
     st.subheader("Detected Alerts")
+
+    if interface_mode == "Standard":
+        st.caption(
+            "Alerts represent patterns that Aegis considers "
+            "important enough to require further review."
+        )
 
     if alerts:
         st.dataframe(
@@ -145,6 +198,89 @@ def show_log_analyzer():
         st.success(
             "No advanced alerts were detected."
         )
+
+    # ---------------------------------------------------------
+    # Standard mode
+    # ---------------------------------------------------------
+
+    if interface_mode == "Standard":
+        st.divider()
+
+        st.subheader("Activity Overview")
+
+        (
+            suspicious_column,
+            failed_login_column,
+            successful_login_column,
+        ) = st.columns(3)
+
+        suspicious_column.metric(
+            "Suspicious Events",
+            len(suspicious_events),
+        )
+
+        failed_login_column.metric(
+            "Failed Logins",
+            len(failed_logins),
+        )
+
+        successful_login_column.metric(
+            "Successful Logins",
+            len(successful_logins),
+        )
+
+        if suspicious_events:
+            st.subheader("Suspicious Events")
+
+            st.dataframe(
+                suspicious_events,
+                width="stretch",
+                hide_index=True,
+            )
+
+        if failed_logins:
+            st.subheader("Failed Login Attempts")
+
+            st.dataframe(
+                failed_logins,
+                width="stretch",
+                hide_index=True,
+            )
+
+        with st.expander("View Additional Technical Details"):
+            st.subheader("Detected IP Addresses")
+
+            if frequent_ips:
+                st.dataframe(
+                    frequent_ips,
+                    width="stretch",
+                    hide_index=True,
+                )
+
+            else:
+                st.info(
+                    "No IP addresses were detected."
+                )
+
+            st.subheader("Successful Logins")
+
+            if successful_logins:
+                st.dataframe(
+                    successful_logins,
+                    width="stretch",
+                    hide_index=True,
+                )
+
+            else:
+                st.info(
+                    "No successful logins were detected."
+                )
+
+        return
+
+    # ---------------------------------------------------------
+    # Advanced mode
+    # ---------------------------------------------------------
 
     st.divider()
 

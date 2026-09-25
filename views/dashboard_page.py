@@ -9,9 +9,30 @@ from database.db import (
 
 
 def show_dashboard():
-    st.header("Main Dashboard")
+    st.header("Dashboard")
+
+    interface_mode = st.session_state.get(
+        "interface_mode",
+        "Standard",
+    )
+
+    if interface_mode == "Standard":
+        st.caption(
+            "Overview of the security activity and scan results "
+            "stored by Aegis."
+        )
+
+    else:
+        st.caption(
+            "Operational overview of stored scans, detected "
+            "services, ports, and recent assessment activity."
+        )
 
     metrics = get_dashboard_metrics()
+
+    # ---------------------------------------------------------
+    # Main metrics
+    # ---------------------------------------------------------
 
     (
         metric_column_1,
@@ -31,7 +52,7 @@ def show_dashboard():
     )
 
     metric_column_3.metric(
-        "Average Duration",
+        "Average Scan Duration",
         f"{metrics['average_duration']} s",
     )
 
@@ -40,14 +61,43 @@ def show_dashboard():
         metrics["latest_target"],
     )
 
+    if interface_mode == "Standard":
+        with st.expander("What do these metrics mean?"):
+            st.write(
+                "**Scans Completed:** number of port scans "
+                "stored in the Aegis database."
+            )
+
+            st.write(
+                "**Open Ports Detected:** total number of open "
+                "ports identified across stored scans."
+            )
+
+            st.write(
+                "**Average Scan Duration:** average execution "
+                "time of stored scans."
+            )
+
+            st.write(
+                "**Latest Target:** most recent target scanned "
+                "and stored by Aegis."
+            )
+
+    # ---------------------------------------------------------
+    # Detection overview
+    # ---------------------------------------------------------
+
     st.divider()
+
+    st.subheader("Detection Overview")
+
+    detected_services = get_detected_services()
+    detected_ports = get_most_detected_ports()
 
     services_column, ports_column = st.columns(2)
 
     with services_column:
-        st.subheader("Most Detected Services")
-
-        detected_services = get_detected_services()
+        st.markdown("#### Most Detected Services")
 
         if detected_services:
             formatted_services = [
@@ -55,14 +105,11 @@ def show_dashboard():
                     "service": service_name,
                     "detections": detection_count,
                 }
-                for service_name, detection_count in detected_services
+                for (
+                    service_name,
+                    detection_count,
+                ) in detected_services
             ]
-
-            st.dataframe(
-                formatted_services,
-                width="stretch",
-                hide_index=True,
-            )
 
             st.bar_chart(
                 formatted_services,
@@ -70,13 +117,20 @@ def show_dashboard():
                 y="detections",
             )
 
+            if interface_mode == "Advanced":
+                st.dataframe(
+                    formatted_services,
+                    width="stretch",
+                    hide_index=True,
+                )
+
         else:
-            st.info("No services have been detected yet.")
+            st.info(
+                "No services have been detected yet."
+            )
 
     with ports_column:
-        st.subheader("Most Detected Ports")
-
-        detected_ports = get_most_detected_ports()
+        st.markdown("#### Most Detected Ports")
 
         if detected_ports:
             formatted_ports = [
@@ -85,7 +139,11 @@ def show_dashboard():
                     "service": service_name,
                     "detections": detection_count,
                 }
-                for port, service_name, detection_count in detected_ports
+                for (
+                    port,
+                    service_name,
+                    detection_count,
+                ) in detected_ports
             ]
 
             st.dataframe(
@@ -95,7 +153,21 @@ def show_dashboard():
             )
 
         else:
-            st.info("No open ports have been detected yet.")
+            st.info(
+                "No open ports have been detected yet."
+            )
+
+    if interface_mode == "Standard":
+        st.caption(
+            "Frequently detected services and ports help provide "
+            "a quick view of the network exposure observed during "
+            "previous scans. Their presence alone does not indicate "
+            "a vulnerability."
+        )
+
+    # ---------------------------------------------------------
+    # Recent scans
+    # ---------------------------------------------------------
 
     st.divider()
 
@@ -104,25 +176,46 @@ def show_dashboard():
     recent_scans = get_recent_scans()
 
     if recent_scans:
-        formatted_scans = [
-            {
-                "id": scan_id,
-                "date": scan_date,
-                "target": ip_address,
-                "port_range": f"{start_port} - {end_port}",
-                "open_ports": open_ports,
-                "duration_seconds": duration_seconds,
-            }
-            for (
-                scan_id,
-                scan_date,
-                ip_address,
-                start_port,
-                end_port,
-                open_ports,
-                duration_seconds,
-            ) in recent_scans
-        ]
+        if interface_mode == "Standard":
+            formatted_scans = [
+                {
+                    "date": scan_date,
+                    "target": ip_address,
+                    "open_ports": open_ports,
+                }
+                for (
+                    scan_id,
+                    scan_date,
+                    ip_address,
+                    start_port,
+                    end_port,
+                    open_ports,
+                    duration_seconds,
+                ) in recent_scans
+            ]
+
+        else:
+            formatted_scans = [
+                {
+                    "id": scan_id,
+                    "date": scan_date,
+                    "target": ip_address,
+                    "port_range": (
+                        f"{start_port} - {end_port}"
+                    ),
+                    "open_ports": open_ports,
+                    "duration_seconds": duration_seconds,
+                }
+                for (
+                    scan_id,
+                    scan_date,
+                    ip_address,
+                    start_port,
+                    end_port,
+                    open_ports,
+                    duration_seconds,
+                ) in recent_scans
+            ]
 
         st.dataframe(
             formatted_scans,
@@ -130,5 +223,18 @@ def show_dashboard():
             hide_index=True,
         )
 
+        if interface_mode == "Standard":
+            with st.expander(
+                "About scan history"
+            ):
+                st.write(
+                    "Aegis stores completed port scans so that "
+                    "previous activity can be reviewed later from "
+                    "Scan History."
+                )
+
     else:
-        st.info("No scans have been saved yet.")
+        st.info(
+            "No scans have been saved yet. Run a port scan "
+            "to begin building assessment history."
+        )

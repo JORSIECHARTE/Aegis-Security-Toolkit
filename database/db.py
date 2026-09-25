@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime
 
 from config import DATABASE_PATH
 from utils.logger import get_logger
@@ -7,7 +8,7 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-DATABASE_VERSION = 1
+DATABASE_VERSION = 3
 
 
 def connect():
@@ -76,6 +77,28 @@ def create_english_schema(connection):
 
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS targets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            host TEXT NOT NULL UNIQUE,
+            description TEXT,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+    connection.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_scan_results_scan_id
         ON scan_results(scan_id)
         """
@@ -85,6 +108,13 @@ def create_english_schema(connection):
         """
         CREATE INDEX IF NOT EXISTS idx_scan_results_port
         ON scan_results(port)
+        """
+    )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_targets_status
+        ON targets(status)
         """
     )
 
@@ -344,6 +374,259 @@ def initialize_database():
         "Database schema created successfully."
     )
 
+
+# ---------------------------------------------------------
+# Settings
+# ---------------------------------------------------------
+
+def save_setting(key, value):
+    with connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO settings (
+                key,
+                value
+            )
+            VALUES (?, ?)
+            ON CONFLICT(key)
+            DO UPDATE SET
+                value = excluded.value
+            """,
+            (
+                key,
+                value,
+            ),
+        )
+
+    logger.info(
+        "Application setting saved. Key=%s.",
+        key,
+    )
+
+
+def get_setting(key, default=None):
+    with connect() as connection:
+        cursor = connection.execute(
+            """
+            SELECT value
+            FROM settings
+            WHERE key = ?
+            """,
+            (key,),
+        )
+
+        result = cursor.fetchone()
+
+    if result is None:
+        return default
+
+    return result[0]
+
+
+# ---------------------------------------------------------
+# Targets
+# ---------------------------------------------------------
+
+def create_target(
+    name,
+    host,
+    description,
+    status,
+):
+    created_at = datetime.now().isoformat(
+        timespec="seconds"
+    )
+
+    with connect() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO targets (
+                name,
+                host,
+                description,
+                status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                host,
+                description,
+                status,
+                created_at,
+            ),
+        )
+
+        target_id = cursor.lastrowid
+
+    logger.info(
+        (
+            "Target created. "
+            "ID=%s, host=%s."
+        ),
+        target_id,
+        host,
+    )
+
+    return target_id
+
+
+def get_targets():
+    with connect() as connection:
+        cursor = connection.execute(
+            """
+            SELECT
+                id,
+                name,
+                host,
+                description,
+                status,
+                created_at
+            FROM targets
+            ORDER BY id DESC
+            """
+        )
+
+        return cursor.fetchall()
+
+
+def get_active_targets():
+    with connect() as connection:
+        cursor = connection.execute(
+            """
+            SELECT
+                id,
+                name,
+                host,
+                description,
+                status,
+                created_at
+            FROM targets
+            WHERE status = 'Active'
+            ORDER BY name ASC
+            """
+        )
+
+        return cursor.fetchall()
+
+
+def get_target(target_id):
+    with connect() as connection:
+        cursor = connection.execute(
+            """
+            SELECT
+                id,
+                name,
+                host,
+                description,
+                status,
+                created_at
+            FROM targets
+            WHERE id = ?
+            """,
+            (target_id,),
+        )
+
+        return cursor.fetchone()
+
+
+def update_target(
+    target_id,
+    name,
+    host,
+    description,
+    status,
+):
+    with connect() as connection:
+        cursor = connection.execute(
+            """
+            UPDATE targets
+            SET
+                name = ?,
+                host = ?,
+                description = ?,
+                status = ?
+            WHERE id = ?
+            """,
+            (
+                name,
+                host,
+                description,
+                status,
+                target_id,
+            ),
+        )
+
+        updated = cursor.rowcount > 0
+
+    if updated:
+        logger.info(
+            "Target updated. ID=%s.",
+            target_id,
+        )
+
+    return updated
+
+
+def delete_target(target_id):
+    with connect() as connection:
+        cursor = connection.execute(
+            """
+            DELETE FROM targets
+            WHERE id = ?
+            """,
+            (target_id,),
+        )
+
+        deleted = cursor.rowcount > 0
+
+    if deleted:
+        logger.info(
+            "Target deleted. ID=%s.",
+            target_id,
+        )
+
+    return deleted
+
+
+def target_host_exists(
+    host,
+    exclude_target_id=None,
+):
+    with connect() as connection:
+        if exclude_target_id is None:
+            cursor = connection.execute(
+                """
+                SELECT 1
+                FROM targets
+                WHERE host = ?
+                LIMIT 1
+                """,
+                (host,),
+            )
+
+        else:
+            cursor = connection.execute(
+                """
+                SELECT 1
+                FROM targets
+                WHERE host = ?
+                  AND id != ?
+                LIMIT 1
+                """,
+                (
+                    host,
+                    exclude_target_id,
+                ),
+            )
+
+        return cursor.fetchone() is not None
+
+
+# ---------------------------------------------------------
+# Scans
+# ---------------------------------------------------------
 
 def save_scan(scan_result):
     logger.info(
