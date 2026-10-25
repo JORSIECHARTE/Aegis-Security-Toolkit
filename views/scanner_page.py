@@ -1,3 +1,4 @@
+
 import streamlit as st
 
 from config import (
@@ -16,7 +17,10 @@ from config import (
     SCAN_WORKERS_STEP,
     TXT_REPORT_FILENAME,
 )
-from database.db import save_scan
+from database.db import (
+    get_active_targets,
+    save_scan,
+)
 from modules.report_generator import (
     generate_html_scan_report,
 )
@@ -87,17 +91,124 @@ def show_port_scanner():
             "you can run an assessment without configuring "
             "low-level scanner parameters."
         )
-
     else:
         st.caption(
             "Advanced Mode provides direct control over the "
             "scanner configuration."
         )
 
-    target = st.text_input(
-        "Target IP or hostname",
-        value=DEFAULT_SCAN_TARGET,
+    # ---------------------------------------------------------
+    # Target selection
+    # ---------------------------------------------------------
+
+    st.subheader("Scan Target")
+
+    active_targets = get_active_targets()
+
+    target_sources = [
+        "Managed Target",
+        "Custom Target",
+    ]
+
+    if active_targets:
+        default_source_index = 0
+    else:
+        default_source_index = 1
+
+    target_source = st.radio(
+        "Target Source",
+        target_sources,
+        index=default_source_index,
+        horizontal=True,
+        help=(
+            "Select an active target managed by Aegis or "
+            "enter a custom IP address or hostname."
+        ),
     )
+
+    selected_target_id = None
+
+    if target_source == "Managed Target":
+        if not active_targets:
+            st.info(
+                "No active managed targets are available. "
+                "Create or activate a target in "
+                "Targets > Manage Targets."
+            )
+            return
+
+        target_lookup = {
+            target[0]: target
+            for target in active_targets
+        }
+
+        selected_target_id = st.selectbox(
+            "Select Managed Target",
+            options=list(target_lookup.keys()),
+            format_func=lambda target_id: (
+                f"{target_lookup[target_id][1]} | "
+                f"{target_lookup[target_id][2]}"
+            ),
+        )
+
+        selected_target = target_lookup[
+            selected_target_id
+        ]
+
+        target_name = selected_target[1]
+        target = selected_target[2].strip()
+        target_description = selected_target[3]
+
+        st.text_input(
+            "Target IP or hostname",
+            value=target,
+            disabled=True,
+        )
+
+        if target_description:
+            st.caption(
+                f"Description: {target_description}"
+            )
+
+        if interface_mode == "Advanced":
+            with st.expander("Managed Target Details"):
+                st.write(
+                    f"**Target ID:** {selected_target_id}"
+                )
+                st.write(
+                    f"**Name:** {target_name}"
+                )
+                st.write(
+                    f"**Host:** {target}"
+                )
+                st.write(
+                    "**Status:** Active"
+                )
+                st.write(
+                    f"**Created:** {selected_target[5]}"
+                )
+
+    else:
+        target = st.text_input(
+            "Target IP or hostname",
+            value=DEFAULT_SCAN_TARGET,
+            help=(
+                "Enter the IP address or hostname of "
+                "a system you are authorized to assess."
+            ),
+        ).strip()
+
+        if interface_mode == "Standard":
+            st.caption(
+                "Custom targets can be scanned without "
+                "adding them to the managed target list."
+            )
+
+    # ---------------------------------------------------------
+    # Scan configuration
+    # ---------------------------------------------------------
+
+    st.subheader("Scan Configuration")
 
     if interface_mode == "Standard":
         profile_name = st.selectbox(
@@ -192,6 +303,10 @@ def show_port_scanner():
                 "on an open port."
             )
 
+    # ---------------------------------------------------------
+    # Scan execution
+    # ---------------------------------------------------------
+
     if not st.button(
         "Start Scan",
         type="primary",
@@ -228,6 +343,10 @@ def show_port_scanner():
         f"Scan saved to history with ID {scan_id}."
     )
 
+    # ---------------------------------------------------------
+    # Scan summary
+    # ---------------------------------------------------------
+
     st.subheader("Scan Summary")
 
     (
@@ -257,6 +376,12 @@ def show_port_scanner():
         f"{scan_result['duration_seconds']} s",
     )
 
+    if selected_target_id is not None:
+        st.caption(
+            f"Managed Target: {target_name} "
+            f"(ID: {selected_target_id})"
+        )
+
     risk_summary = calculate_overall_risk(
         scan_result["results"]
     )
@@ -270,6 +395,10 @@ def show_port_scanner():
             scan_result["results"]
         )
     )
+
+    # ---------------------------------------------------------
+    # Risk dashboard
+    # ---------------------------------------------------------
 
     st.divider()
 
@@ -323,6 +452,10 @@ def show_port_scanner():
             width="stretch",
         )
 
+    # ---------------------------------------------------------
+    # Vulnerability findings
+    # ---------------------------------------------------------
+
     st.subheader("Vulnerability Findings")
 
     if interface_mode == "Standard":
@@ -354,6 +487,10 @@ def show_port_scanner():
             st.write(
                 f"- {recommendation}"
             )
+
+    # ---------------------------------------------------------
+    # Scan details
+    # ---------------------------------------------------------
 
     st.divider()
 
@@ -387,6 +524,10 @@ def show_port_scanner():
         scan_result["results"],
         width="stretch",
     )
+
+    # ---------------------------------------------------------
+    # Reports
+    # ---------------------------------------------------------
 
     txt_report = generate_txt_report(
         scan_result

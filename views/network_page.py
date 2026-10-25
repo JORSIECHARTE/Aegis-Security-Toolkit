@@ -1,3 +1,6 @@
+
+import ipaddress
+
 import streamlit as st
 
 from config import (
@@ -14,6 +17,7 @@ from config import (
     MIN_DISCOVERY_WORKERS,
     MIN_PORT,
 )
+from database.db import get_active_targets
 from modules.network_discovery import discover_hosts
 from modules.report_generator import generate_html_scan_report
 from modules.scanner import scan_port_range
@@ -26,6 +30,51 @@ from services.vulnerability_rules import (
 )
 
 
+SCAN_PROFILES = {
+    "Quick Scan": (1, 1024),
+    "Common Services": (1, 5000),
+    "Extended Scan": (1, 10000),
+}
+
+
+def validate_network_base(value):
+    parts = value.strip().split(".")
+
+    if len(parts) != 3:
+        return None
+
+    try:
+        octets = [int(part) for part in parts]
+    except ValueError:
+        return None
+
+    if any(
+        not part.isdecimal()
+        or str(octet) != part
+        or not 0 <= octet <= 255
+        for part, octet in zip(parts, octets)
+    ):
+        return None
+
+    return ".".join(str(octet) for octet in octets)
+
+
+def get_target_network(host):
+    try:
+        address = ipaddress.IPv4Address(host.strip())
+    except ipaddress.AddressValueError:
+        return None
+
+    network = ipaddress.IPv4Network(
+        f"{address}/24",
+        strict=False,
+    )
+
+    return ".".join(
+        str(network.network_address).split(".")[:3]
+    )
+
+
 def show_network_discovery():
     st.header("Network Discovery")
 
@@ -35,31 +84,142 @@ def show_network_discovery():
     )
 
     st.info(
-        "Discover active hosts inside your local network. "
-        "Use this module only on networks you own or are authorized "
-        "to assess."
+        "Discover active hosts inside authorized networks. "
+        "Only assess systems and network ranges for which "
+        "you have permission."
     )
 
     if interface_mode == "Standard":
         st.caption(
-            "Aegis uses recommended discovery settings automatically. "
-            "Enter the base network and start the discovery."
+            "Standard Mode uses recommended discovery "
+            "settings and simplified scan profiles."
         )
-
     else:
         st.caption(
-            "Advanced Mode provides direct control over discovery "
-            "timeout and concurrency."
+            "Advanced Mode provides direct control over "
+            "discovery and scanning parameters."
         )
 
-    base_ip = st.text_input(
-        "Base network",
-        value=DEFAULT_NETWORK_BASE,
+    # ---------------------------------------------------------
+    # Network source
+    # ---------------------------------------------------------
+
+    st.subheader("Discovery Target")
+
+    active_targets = get_active_targets()
+
+    source_options = [
+        "Custom Network",
+        "Managed Target",
+    ]
+
+    network_source = st.radio(
+        "Network Source",
+        source_options,
+        horizontal=True,
         help=(
-            "Enter the first three octets of an IPv4 network, "
-            "for example 192.168.1."
+            "Enter a network manually or derive a /24 "
+            "network from a managed IPv4 target."
         ),
     )
+
+    selected_target_id = None
+    selected_target_name = None
+    base_ip = None
+
+    if network_source == "Custom Network":
+        entered_base = st.text_input(
+            "Base network",
+            value=DEFAULT_NETWORK_BASE,
+            help=(
+                "Enter the first three IPv4 octets, "
+                "for example 192.168.1."
+            ),
+        )
+
+        base_ip = validate_network_base(
+            entered_base
+        )
+
+        if entered_base.strip() and base_ip is None:
+            st.error(
+                "Invalid base network. Use a format "
+                "such as 192.168.1."
+            )
+
+    else:
+        if not active_targets:
+            st.info(
+                "No active managed targets are available. "
+                "Create or activate a target in "
+                "Targets > Manage Targets."
+            )
+            return
+
+        target_lookup = {
+            target[0]: target
+            for target in active_targets
+        }
+
+        selected_target_id = st.selectbox(
+            "Select Managed Target",
+            options=list(target_lookup.keys()),
+            format_func=lambda target_id: (
+                f"{target_lookup[target_id][1]} | "
+                f"{target_lookup[target_id][2]}"
+            ),
+        )
+
+        selected_target = target_lookup[
+            selected_target_id
+        ]
+
+        selected_target_name = selected_target[1]
+        selected_host = selected_target[2]
+
+        st.text_input(
+            "Managed Target Address",
+            value=selected_host,
+            disabled=True,
+        )
+
+        base_ip = get_target_network(
+            selected_host
+        )
+
+        if base_ip is None:
+            st.warning(
+                "Network Discovery requires an IPv4 "
+                "address to derive a network. "
+                "This managed target cannot be used "
+                "for network discovery."
+            )
+            return
+
+        st.caption(
+            f"Derived network: {base_ip}.0/24"
+        )
+
+        if interface_mode == "Advanced":
+            with st.expander("Managed Target Details"):
+                st.write(
+                    f"**Target ID:** {selected_target_id}"
+                )
+                st.write(
+                    f"**Name:** {selected_target_name}"
+                )
+                st.write(
+                    f"**Host:** {selected_host}"
+                )
+                st.write(
+                    "**Status:** Active"
+                )
+
+    # ---------------------------------------------------------
+    # Discovery configuration
+    # ---------------------------------------------------------
+
+    st.subheader("Discovery Configuration")
 
     if interface_mode == "Standard":
         workers = DEFAULT_DISCOVERY_WORKERS
@@ -73,7 +233,11 @@ def show_network_discovery():
 
         range_column.metric(
             "Discovery Range",
-            f"{base_ip}.1 - {base_ip}.254",
+            (
+                f"{base_ip}.1 - {base_ip}.254"
+                if base_ip
+                else "Invalid network"
+            ),
         )
 
         timeout_column.metric(
@@ -86,11 +250,15 @@ def show_network_discovery():
             workers,
         )
 
-        with st.expander("How does host discovery work?"):
+        with st.expander(
+            "How does host discovery work?"
+        ):
             st.write(
-                "Aegis checks selected network services across the "
-                "target network. A host that responds on one of these "
-                "services is considered active."
+                "Aegis checks selected network services "
+                "across the target network. A host that "
+                "responds on one of these services is "
+                "considered active. Hosts that do not "
+                "respond may still be online."
             )
 
     else:
@@ -110,13 +278,74 @@ def show_network_discovery():
             ),
         )
 
+        st.write(
+            "Discovery range:",
+            (
+                f"{base_ip}.1 - {base_ip}.254"
+                if base_ip
+                else "Invalid network"
+            ),
+        )
+
+    # ---------------------------------------------------------
+    # Scope confirmation
+    # ---------------------------------------------------------
+
+    st.warning(
+        "Discovery checks addresses across the entire "
+        "displayed /24 range, not only the selected host. "
+        "Confirm that the complete range is authorized."
+    )
+
+    scope_confirmed = st.checkbox(
+        "I am authorized to assess this network range.",
+        key="network_scope_confirmation",
+    )
+
+    # ---------------------------------------------------------
+    # Discovery execution
+    # ---------------------------------------------------------
+
+    discovery_context = (
+        network_source,
+        selected_target_id,
+        base_ip,
+        int(workers),
+        float(timeout),
+    )
+
+    if (
+        st.session_state.get(
+            "network_discovery_context"
+        ) != discovery_context
+    ):
+        st.session_state.pop(
+            "network_discovery_result",
+            None,
+        )
+        st.session_state.pop(
+            "network_quick_scan_result",
+            None,
+        )
+        st.session_state.pop(
+            "network_scanned_host",
+            None,
+        )
+
     if st.button(
         "Discover Hosts",
         type="primary",
     ):
-        if not base_ip.strip():
+        if base_ip is None:
             st.error(
-                "Enter a base network."
+                "Enter or select a valid IPv4 network."
+            )
+            return
+
+        if not scope_confirmed:
+            st.error(
+                "Confirm authorization for the "
+                "complete network range before scanning."
             )
             return
 
@@ -133,8 +362,16 @@ def show_network_discovery():
             "network_discovery_result"
         ] = discovery_result
 
+        st.session_state[
+            "network_discovery_context"
+        ] = discovery_context
+
         st.session_state.pop(
             "network_quick_scan_result",
+            None,
+        )
+        st.session_state.pop(
+            "network_scanned_host",
             None,
         )
 
@@ -147,6 +384,10 @@ def show_network_discovery():
     discovery_result = st.session_state[
         "network_discovery_result"
     ]
+
+    # ---------------------------------------------------------
+    # Discovery summary
+    # ---------------------------------------------------------
 
     st.subheader("Discovery Summary")
 
@@ -172,9 +413,9 @@ def show_network_discovery():
 
     if interface_mode == "Standard":
         st.caption(
-            "A detected host responded on at least one of the "
-            "network services checked by Aegis. Hosts that do not "
-            "respond may still be online."
+            "A detected host responded on at least one "
+            "network service checked by Aegis. "
+            "Undetected hosts may still be online."
         )
 
     if not discovery_result["hosts"]:
@@ -190,52 +431,40 @@ def show_network_discovery():
         width="stretch",
     )
 
+    # ---------------------------------------------------------
+    # Host selection
+    # ---------------------------------------------------------
+
     st.divider()
 
-    st.subheader(
-        "Scan Selected Host"
-    )
+    st.subheader("Scan Selected Host")
 
-    host_options = [
-        (
-            f"{host['ip']} | "
-            f"{host['hostname']} | "
-            f"Port {host['detected_port']}"
-        )
+    host_lookup = {
+        host["ip"]: host
         for host in discovery_result["hosts"]
-    ]
+    }
 
-    selected_host_label = st.selectbox(
+    selected_ip = st.selectbox(
         "Select host",
-        options=host_options,
+        options=list(host_lookup.keys()),
+        format_func=lambda ip: (
+            f"{ip} | "
+            f"{host_lookup[ip]['hostname']} | "
+            f"Port {host_lookup[ip]['detected_port']}"
+        ),
     )
-
-    selected_ip = selected_host_label.split(
-        " | "
-    )[0]
 
     if interface_mode == "Standard":
         scan_profile = st.selectbox(
             "Scan Profile",
-            [
-                "Quick Scan",
-                "Common Services",
-                "Extended Scan",
-            ],
+            list(SCAN_PROFILES.keys()),
             key="network_scan_profile",
         )
 
-        if scan_profile == "Quick Scan":
-            start_port = 1
-            end_port = 1024
-
-        elif scan_profile == "Common Services":
-            start_port = 1
-            end_port = 5000
-
-        else:
-            start_port = 1
-            end_port = 10000
+        (
+            start_port,
+            end_port,
+        ) = SCAN_PROFILES[scan_profile]
 
         (
             target_column,
@@ -278,18 +507,25 @@ def show_network_discovery():
         "Enable banner grabbing",
         key="network_banner_grabbing",
         help=(
-            "Attempts to retrieve information exposed by services "
-            "running on open ports."
+            "Attempts to retrieve information exposed "
+            "by services running on open ports."
         ),
     )
 
     if interface_mode == "Standard":
-        with st.expander("What is banner grabbing?"):
+        with st.expander(
+            "What is banner grabbing?"
+        ):
             st.write(
-                "Banner grabbing attempts to collect information "
-                "returned by a network service. This can help identify "
-                "the software or service running on an open port."
+                "Banner grabbing attempts to collect "
+                "information returned by a network service. "
+                "This can help identify the software or "
+                "service running on an open port."
             )
+
+    # ---------------------------------------------------------
+    # Host scan execution
+    # ---------------------------------------------------------
 
     if st.button(
         "Run Host Scan",
@@ -297,8 +533,8 @@ def show_network_discovery():
     ):
         if start_port > end_port:
             st.error(
-                "Start port cannot be greater than "
-                "end port."
+                "Start port cannot be greater "
+                "than end port."
             )
             return
 
@@ -318,15 +554,34 @@ def show_network_discovery():
             "network_quick_scan_result"
         ] = quick_scan_result
 
+        st.session_state[
+            "network_scanned_host"
+        ] = selected_ip
+
     if (
         "network_quick_scan_result"
         not in st.session_state
     ):
         return
 
+    if (
+        st.session_state.get(
+            "network_scanned_host"
+        ) != selected_ip
+    ):
+        st.info(
+            "Run a scan for the newly selected host "
+            "to display its results."
+        )
+        return
+
     scan_result = st.session_state[
         "network_quick_scan_result"
     ]
+
+    # ---------------------------------------------------------
+    # Host scan summary
+    # ---------------------------------------------------------
 
     st.subheader("Host Scan Result")
 
@@ -367,6 +622,10 @@ def show_network_discovery():
         )
     )
 
+    # ---------------------------------------------------------
+    # Risk dashboard
+    # ---------------------------------------------------------
+
     st.divider()
 
     st.subheader("Risk Dashboard")
@@ -388,9 +647,9 @@ def show_network_discovery():
 
     if interface_mode == "Standard":
         st.caption(
-            "The risk score summarizes the exposure identified "
-            "during the scan. It does not by itself confirm that "
-            "the target is vulnerable."
+            "The risk score summarizes the exposure "
+            "identified during the scan. It does not "
+            "by itself confirm a vulnerability."
         )
 
     assessment = risk_summary["assessment"]
@@ -429,6 +688,10 @@ def show_network_discovery():
                 f"- {recommendation}"
             )
 
+    # ---------------------------------------------------------
+    # Vulnerability findings
+    # ---------------------------------------------------------
+
     st.divider()
 
     st.subheader(
@@ -437,9 +700,10 @@ def show_network_discovery():
 
     if interface_mode == "Standard":
         st.caption(
-            "Findings are based on the evidence collected by "
-            "Aegis and its current detection rules. They should "
-            "be validated before being treated as confirmed "
+            "Findings are based on the evidence "
+            "collected by Aegis and its current "
+            "detection rules. They should be validated "
+            "before being treated as confirmed "
             "vulnerabilities."
         )
 
@@ -455,6 +719,10 @@ def show_network_discovery():
             "based on the current rules."
         )
 
+    # ---------------------------------------------------------
+    # Open ports and report
+    # ---------------------------------------------------------
+
     st.divider()
 
     if not scan_result["results"]:
@@ -468,9 +736,10 @@ def show_network_discovery():
 
     if interface_mode == "Standard":
         st.caption(
-            "An open port indicates that a network service is "
-            "accepting connections. An open port alone does not "
-            "mean that the service is vulnerable."
+            "An open port indicates that a network "
+            "service is accepting connections. "
+            "An open port alone does not mean that "
+            "the service is vulnerable."
         )
 
     st.dataframe(
