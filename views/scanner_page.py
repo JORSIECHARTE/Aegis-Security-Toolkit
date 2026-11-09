@@ -456,14 +456,15 @@ def show_port_scanner():
     # Vulnerability findings
     # ---------------------------------------------------------
 
-    st.subheader("Vulnerability Findings")
+    st.subheader("Security Findings")
 
     if interface_mode == "Standard":
         st.caption(
-            "Findings are generated from the evidence collected "
-            "by Aegis and its current detection rules. A finding "
-            "should be validated before being treated as a "
-            "confirmed vulnerability."
+            "Security findings identify potential service "
+            "exposures and configuration risks based on "
+            "detected open ports and available banner evidence. "
+            "Banner information does not confirm a vulnerability. "
+            "Additional validation is required."
         )
 
     if vulnerability_findings:

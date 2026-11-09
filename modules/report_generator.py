@@ -1,5 +1,7 @@
 from html import escape
-
+from services.vulnerability_rules import (
+    analyze_service_vulnerabilities,
+)
 from services.risk_summary import (
     calculate_overall_risk,
     generate_executive_summary,
@@ -48,6 +50,42 @@ def generate_html_scan_report(scan_result):
 
     risk_summary = calculate_overall_risk(results)
     executive_summary = generate_executive_summary(scan_result)
+
+    vulnerability_findings = analyze_service_vulnerabilities(
+        results
+    )
+
+    finding_rows = ""
+
+    for finding in vulnerability_findings:
+        severity = finding.get("severity", "Unknown")
+        severity_class = get_risk_class(severity)
+
+        finding_rows += f"""
+        <tr>
+            <td>{format_html_value(finding.get("port", ""))}</td>
+            <td>{format_html_value(finding.get("service", ""))}</td>
+            <td class="{severity_class}">
+                {format_html_value(severity)}
+            </td>
+            <td>{format_html_value(finding.get("title", ""))}</td>
+            <td>{format_html_value(finding.get("evidence_type", ""))}</td>
+            <td>{format_html_value(finding.get("detected_software") or "Not identified")}</td>
+            <td class="banner-cell">
+                {format_html_value(finding.get("evidence", ""))}
+            </td>
+        </tr>
+        """
+
+    if not finding_rows:
+        finding_rows = """
+        <tr>
+            <td colspan="7" class="empty-state">
+                No security findings were detected
+                based on the current rules.
+            </td>
+        </tr>
+        """
 
     high_risk_rows = ""
 
@@ -406,7 +444,34 @@ def generate_html_scan_report(scan_result):
                 </tbody>
             </table>
         </div>
+        <h2>Security Findings</h2>
 
+        <p>
+            Findings identify potential service exposures
+            and configuration risks. Banner evidence does
+            not confirm a vulnerability. Additional
+            validation is required.
+        </p>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Port</th>
+                        <th>Service</th>
+                        <th>Severity</th>
+                        <th>Finding</th>
+                        <th>Evidence Type</th>
+                        <th>Detected Software</th>
+                        <th>Evidence</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {finding_rows}
+                </tbody>
+            </table>
+        </div>
         <h2>Priority Actions</h2>
 
         <ul>
